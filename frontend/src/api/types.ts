@@ -171,3 +171,9 @@ export interface OverrideBlockRequest {
   decision?: BlockDecision | null
   reason?: string | null
 }
+
+export interface RescheduleBlockRequest {
+  startTime: string
+  endTime: string
+  reason?: string | null
+}

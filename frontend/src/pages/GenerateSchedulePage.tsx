@@ -1,5 +1,6 @@
-import {type SubmitEvent, useEffect, useMemo, useState} from 'react'
+import {type SubmitEvent, useEffect, useMemo, useRef, useState} from 'react'
 import {Link, useSearchParams} from 'react-router-dom'
+import {TrashIcon} from '@phosphor-icons/react'
 import {
   ApiError,
   type ProjectResponse,
@@ -21,6 +22,7 @@ import {Field, FieldGroup, FieldLabel} from '@/components/ui/field'
 import {Input} from '@/components/ui/input'
 import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow,} from '@/components/ui/table'
+import {deadlineDatePart, toDateInputValue, toDateTimeLocalValue, toLocalDateTimePayload} from '@/lib/datetime'
 import {cn} from '@/lib/utils'
 
 interface TaskDraft {
@@ -42,7 +44,7 @@ const emptyDraft = (): TaskDraft => {
     category: 'work',
     projectType: 'General',
     priority: 3,
-    deadline: deadline.toISOString().slice(0, 16),
+    deadline: toDateTimeLocalValue(deadline),
     estimatedDurationHours: 2,
     complexity: 3,
   }
@@ -55,19 +57,26 @@ export function GenerateSchedulePage() {
   const [projectId, setProjectId] = useState(params.get('projectId') ?? '')
   const [tasks, setTasks] = useState<TaskResponse[]>([])
   const [draft, setDraft] = useState<TaskDraft>(emptyDraft)
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [startDate, setStartDate] = useState(() => toDateInputValue())
   const [endDate, setEndDate] = useState(() => {
     const d = new Date()
     d.setDate(d.getDate() + 7)
-    return d.toISOString().slice(0, 10)
+    return toDateInputValue(d)
   })
   const [result, setResult] = useState<SchedulePlanResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const projectIdRef = useRef(projectId)
+  projectIdRef.current = projectId
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId) ?? null,
     [projects, projectId],
+  )
+
+  const schedulableCount = useMemo(
+    () => tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length,
+    [tasks],
   )
 
   useEffect(() => {
@@ -76,12 +85,15 @@ export function GenerateSchedulePage() {
       .list(user.id)
       .then((list) => {
         setProjects(list)
-        if (!projectId && list.length > 0) setProjectId(list[0].id)
+        setProjectId((current) => {
+          if (current && list.some((p) => p.id === current)) return current
+          return list[0]?.id ?? ''
+        })
       })
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : 'Failed to load projects')
       })
-  }, [user, projectId])
+  }, [user])
 
   useEffect(() => {
     if (!projectId) {
@@ -92,7 +104,9 @@ export function GenerateSchedulePage() {
     void tasksApi
       .listByProject(projectId)
       .then((list) => {
-        if (!cancelled) setTasks(list)
+        if (!cancelled) {
+          setTasks(list.filter((t) => t.status !== 'CANCELLED'))
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to load tasks')
@@ -104,30 +118,76 @@ export function GenerateSchedulePage() {
 
   useEffect(() => {
     if (!selectedProject) return
-    setStartDate(selectedProject.startDate)
-    setEndDate(selectedProject.endDate)
+    const start = deadlineDatePart(selectedProject.startDate)
+    const end = deadlineDatePart(selectedProject.endDate)
+    if (start) setStartDate(start)
+    if (end) setEndDate(end)
   }, [selectedProject])
 
   async function addTask(e: SubmitEvent) {
     e.preventDefault()
     if (!user || !projectId) return
+    const title = draft.title.trim()
+    const category = draft.category.trim()
+    if (!title || !category) {
+      setError('Task name and category are required.')
+      return
+    }
+    if (!Number.isFinite(draft.priority) || draft.priority < 1 || draft.priority > 5) {
+      setError('Priority must be a number from 1 to 5.')
+      return
+    }
+    if (!Number.isFinite(draft.complexity) || draft.complexity < 1 || draft.complexity > 5) {
+      setError('Complexity must be a number from 1 to 5.')
+      return
+    }
+    if (!Number.isFinite(draft.estimatedDurationHours) || draft.estimatedDurationHours <= 0) {
+      setError('Estimate hours must be greater than 0.')
+      return
+    }
+    if (!draft.deadline) {
+      setError('Deadline is required.')
+      return
+    }
+    const deadlineMs = new Date(draft.deadline).getTime()
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
+      setError('Deadline must be a future date and time.')
+      return
+    }
     setError(null)
     setBusy(true)
+    const targetProjectId = projectId
     try {
-      const created = await tasksApi.create(projectId, {
+      const created = await tasksApi.create(targetProjectId, {
         actorUserId: user.id,
-        title: draft.title.trim(),
+        title,
         description: draft.projectType.trim() || undefined,
-        category: draft.category.trim(),
+        category,
         priority: draft.priority,
-        deadline: draft.deadline.length === 16 ? `${draft.deadline}:00` : draft.deadline,
+        deadline: toLocalDateTimePayload(draft.deadline),
         estimatedDurationHours: draft.estimatedDurationHours,
         complexity: draft.complexity,
       })
-      setTasks((prev) => [...prev, created])
-      setDraft(emptyDraft())
+      if (projectIdRef.current === targetProjectId) {
+        setTasks((prev) => [...prev, created])
+        setDraft(emptyDraft())
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create task')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeTask(taskId: string) {
+    if (!user) return
+    setError(null)
+    setBusy(true)
+    try {
+      await tasksApi.remove(taskId, user.id)
+      setTasks((prev) => prev.filter((t) => t.id !== taskId))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not delete task')
     } finally {
       setBusy(false)
     }
@@ -136,6 +196,18 @@ export function GenerateSchedulePage() {
   async function generate(e: SubmitEvent) {
     e.preventDefault()
     if (!projectId) return
+    if (schedulableCount === 0) {
+      setError('Add at least one pending task before generating.')
+      return
+    }
+    if (!startDate || !endDate) {
+      setError('Start and end dates are required.')
+      return
+    }
+    if (endDate < startDate) {
+      setError('End date must be on or after the start date.')
+      return
+    }
     setError(null)
     setBusy(true)
     try {
@@ -253,6 +325,9 @@ export function GenerateSchedulePage() {
                       <TableHead>Estimate hours</TableHead>
                       <TableHead>Deadline</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-12">
+                        <span className="sr-only">Remove</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -266,16 +341,28 @@ export function GenerateSchedulePage() {
                         <TableCell>{t.complexity}</TableCell>
                         <TableCell>{t.priority}</TableCell>
                         <TableCell>{t.estimatedDurationHours}</TableCell>
-                        <TableCell>{t.deadline.slice(0, 10)}</TableCell>
+                        <TableCell>{deadlineDatePart(t.deadline) ?? '—'}</TableCell>
                         <TableCell>
                           <Badge variant="secondary">{t.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Remove ${t.title}`}
+                            disabled={busy}
+                            onClick={() => void removeTask(t.id)}
+                          >
+                            <TrashIcon />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                     {tasks.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={9}
                           className="py-8 text-center text-muted-foreground"
                         >
                           No tasks yet — add one below.
@@ -316,8 +403,13 @@ export function GenerateSchedulePage() {
                   type="number"
                   min={1}
                   max={5}
-                  value={draft.complexity}
-                  onChange={(e) => setDraft({ ...draft, complexity: Number(e.target.value) })}
+                  value={Number.isFinite(draft.complexity) ? draft.complexity : ''}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      complexity: e.target.value === '' ? Number.NaN : Number(e.target.value),
+                    })
+                  }
                   required
                 />
                 <Input
@@ -325,8 +417,13 @@ export function GenerateSchedulePage() {
                   type="number"
                   min={1}
                   max={5}
-                  value={draft.priority}
-                  onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}
+                  value={Number.isFinite(draft.priority) ? draft.priority : ''}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      priority: e.target.value === '' ? Number.NaN : Number(e.target.value),
+                    })
+                  }
                   required
                 />
                 <Input
@@ -334,9 +431,13 @@ export function GenerateSchedulePage() {
                   type="number"
                   min={0.25}
                   step={0.25}
-                  value={draft.estimatedDurationHours}
+                  value={Number.isFinite(draft.estimatedDurationHours) ? draft.estimatedDurationHours : ''}
                   onChange={(e) =>
-                    setDraft({ ...draft, estimatedDurationHours: Number(e.target.value) })
+                    setDraft({
+                      ...draft,
+                      estimatedDurationHours:
+                        e.target.value === '' ? Number.NaN : Number(e.target.value),
+                    })
                   }
                   required
                 />
@@ -362,7 +463,7 @@ export function GenerateSchedulePage() {
               <form onSubmit={generate}>
                 <Button
                   type="submit"
-                  disabled={busy || !projectId || tasks.length === 0}
+                  disabled={busy || !projectId || schedulableCount === 0}
                 >
                   {busy ? 'Generating…' : 'Generate schedule'}
                 </Button>
@@ -393,19 +494,30 @@ export function GenerateSchedulePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {result.blocks.map((b) => (
-                        <TableRow key={b.id}>
-                          <TableCell>
-                            <DecisionBadge decision={b.decision} />
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {b.startTime ?? '—'} → {b.endTime ?? '—'}
-                          </TableCell>
-                          <TableCell className="max-w-xs text-muted-foreground">
-                            {b.reason ?? '—'}
+                      {(result.blocks ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="py-8 text-center text-muted-foreground"
+                          >
+                            No blocks were placed for this range.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (result.blocks ?? []).map((b) => (
+                          <TableRow key={b.id}>
+                            <TableCell>
+                              <DecisionBadge decision={b.decision} />
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {b.startTime ?? '—'} → {b.endTime ?? '—'}
+                            </TableCell>
+                            <TableCell className="max-w-xs text-muted-foreground">
+                              {b.reason ?? '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
