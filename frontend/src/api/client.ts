@@ -105,11 +105,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    let message = 'Request failed (' + response.status + ')'
-    if (parsed != null && parsed.message) {
-      message = parsed.message
-    }
-    throw new ApiError(response.status, message, parsed)
+    throw new ApiError(response.status, messageFromErrorBody(parsed, response.status), parsed)
   }
 
   return parsed as T
@@ -126,6 +122,54 @@ export const api = {
     apiRequest<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string, query?: RequestOptions['query']) =>
     apiRequest<T>(path, { method: 'DELETE', query }),
+}
+
+function messageFromErrorBody(parsed: any, status: number): string {
+  const fallback = 'Request failed (' + status + ')'
+  if (parsed == null || typeof parsed !== 'object') {
+    return fallback
+  }
+
+  let message = ''
+  if (typeof parsed.message === 'string' && parsed.message.trim() !== '') {
+    message = parsed.message.trim()
+  } else if (typeof parsed.detail === 'string' && parsed.detail.trim() !== '') {
+    message = parsed.detail.trim()
+  } else if (typeof parsed.error === 'string' && parsed.error.trim() !== '') {
+    message = parsed.error.trim()
+  } else if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+    message = parsed.errors
+      .map((item: unknown) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object' && 'message' in item) {
+          return String((item as { message: unknown }).message)
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('; ')
+  }
+
+  if (message === '') {
+    return fallback
+  }
+  return simplifyJacksonMessage(message)
+}
+
+/** Jackson/Spring unreadable-body text is long; keep the useful clause. */
+function simplifyJacksonMessage(message: string): string {
+  if (!message.startsWith('JSON parse error:') && !message.includes('Cannot deserialize')
+      && !message.includes('Cannot map `null`')) {
+    return message
+  }
+  if (message.includes('Cannot map `null`')) {
+    return 'A required number was empty or invalid. Check hours, priority, and complexity.'
+  }
+  if (message.includes('LocalDate') || message.includes('LocalDateTime') || message.includes('LocalTime')) {
+    return 'A date or time was missing or invalid. Check the start, end, and deadline fields.'
+  }
+  const firstLine = message.split('\n')[0]
+  return firstLine.length > 220 ? firstLine.slice(0, 217) + '…' : firstLine
 }
 
 export function apiBaseUrl(): string {

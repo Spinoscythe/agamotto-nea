@@ -9,9 +9,11 @@ import type {
   NotificationResponse,
   OverrideBlockRequest,
   ProjectResponse,
+  RescheduleBlockRequest,
   RegisterRequest,
   ReportPeriod,
   RescheduleResponse,
+  ScheduleBlockResponse,
   SchedulePlanResponse,
   TaskResponse,
   UpdateUserRequest,
@@ -77,9 +79,9 @@ export const schedulesApi = {
   get: (planId: string) =>
     api.get<SchedulePlanResponse>(`/api/schedules/${planId}`),
   overrideBlock: (blockId: string, body: OverrideBlockRequest) =>
-    api.patch(`/api/schedule-blocks/${blockId}`, body),
-  rescheduleBlock: (blockId: string, body?: OverrideBlockRequest) =>
-    api.post<RescheduleResponse>(`/api/schedule-blocks/${blockId}/reschedule`, body ?? {}),
+    api.patch<ScheduleBlockResponse>(`/api/schedule-blocks/${blockId}`, body),
+  rescheduleBlock: (blockId: string, body: RescheduleBlockRequest) =>
+    api.post<RescheduleResponse>(`/api/schedule-blocks/${blockId}/reschedule`, body),
 }
 
 export const dashboardApi = {

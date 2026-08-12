@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/card'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { timeToMinutes, toTimeInputValue } from '@/lib/datetime'
 import * as React from "react";
 
 export function SettingsPage() {
@@ -40,8 +41,8 @@ export function SettingsPage() {
         const p = u.profile
         setProfile(p)
         setFullName(u.fullName || user.fullName || user.displayName)
-        setPreferredStart((p?.preferredStart ?? '09:00').slice(0, 5))
-        setPreferredEnd((p?.preferredEnd ?? '17:00').slice(0, 5))
+        setPreferredStart(toTimeInputValue(p?.preferredStart, '09:00'))
+        setPreferredEnd(toTimeInputValue(p?.preferredEnd, '17:00'))
         setIncludeWeekends(p?.includeWeekends ?? true)
         setWeightPriority(p?.weightPriority ?? 1)
         setWeightUrgency(p?.weightUrgency ?? 1)
@@ -60,6 +61,31 @@ export function SettingsPage() {
   async function onSubmit(e: React.SubmitEvent) {
     e.preventDefault()
     if (!user) return
+    if (!fullName.trim()) {
+      setError('Full name is required.')
+      return
+    }
+    const startMins = timeToMinutes(preferredStart)
+    const endMins = timeToMinutes(preferredEnd)
+    if (!Number.isFinite(startMins) || !Number.isFinite(endMins)) {
+      setError('Working day start and end times are required.')
+      return
+    }
+    if (endMins <= startMins) {
+      setError('Working day end must be after start.')
+      return
+    }
+    if (
+      !Number.isFinite(weightPriority) ||
+      !Number.isFinite(weightUrgency) ||
+      !Number.isFinite(weightDuration) ||
+      weightPriority < 0 ||
+      weightUrgency < 0 ||
+      weightDuration < 0
+    ) {
+      setError('Weights must be numbers 0 or greater.')
+      return
+    }
     setError(null)
     setSaved(false)
     setPending(true)
@@ -163,8 +189,10 @@ export function SettingsPage() {
                     type="number"
                     min={0}
                     step={0.1}
-                    value={weightPriority}
-                    onChange={(e) => setWeightPriority(Number(e.target.value))}
+                  value={Number.isFinite(weightPriority) ? weightPriority : ''}
+                  onChange={(e) =>
+                    setWeightPriority(e.target.value === '' ? Number.NaN : Number(e.target.value))
+                  }
                   />
                 </Field>
                 <Field>
@@ -174,8 +202,10 @@ export function SettingsPage() {
                     type="number"
                     min={0}
                     step={0.1}
-                    value={weightUrgency}
-                    onChange={(e) => setWeightUrgency(Number(e.target.value))}
+                  value={Number.isFinite(weightUrgency) ? weightUrgency : ''}
+                  onChange={(e) =>
+                    setWeightUrgency(e.target.value === '' ? Number.NaN : Number(e.target.value))
+                  }
                   />
                 </Field>
                 <Field>
@@ -185,8 +215,10 @@ export function SettingsPage() {
                     type="number"
                     min={0}
                     step={0.1}
-                    value={weightDuration}
-                    onChange={(e) => setWeightDuration(Number(e.target.value))}
+                  value={Number.isFinite(weightDuration) ? weightDuration : ''}
+                  onChange={(e) =>
+                    setWeightDuration(e.target.value === '' ? Number.NaN : Number(e.target.value))
+                  }
                   />
                 </Field>
               </div>

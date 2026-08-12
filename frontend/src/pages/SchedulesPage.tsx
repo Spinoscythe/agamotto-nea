@@ -41,6 +41,8 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { toDateInputValue } from '@/lib/datetime'
+import { planExplanation } from '@/lib/schedule'
 
 export function SchedulesPage() {
   const { user } = useAuth()
@@ -59,11 +61,11 @@ export function SchedulesPage() {
 
   const [projectName, setProjectName] = useState('')
   const [projectDesc, setProjectDesc] = useState('')
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [startDate, setStartDate] = useState(() => toDateInputValue())
   const [endDate, setEndDate] = useState(() => {
     const d = new Date()
     d.setDate(d.getDate() + 14)
-    return d.toISOString().slice(0, 10)
+    return toDateInputValue(d)
   })
   const [effortHours, setEffortHours] = useState(40)
 
@@ -137,6 +139,22 @@ export function SchedulesPage() {
   async function createProject(e: React.SubmitEvent) {
     e.preventDefault()
     if (!user || creatingRef.current) return
+    if (!projectName.trim()) {
+      setError('Project name is required.')
+      return
+    }
+    if (!startDate || !endDate) {
+      setError('Start and end dates are required.')
+      return
+    }
+    if (endDate < startDate) {
+      setError('End date must be on or after the start date.')
+      return
+    }
+    if (!Number.isFinite(effortHours) || effortHours < 0) {
+      setError('Effort hours must be 0 or greater.')
+      return
+    }
     creatingRef.current = true
     setError(null)
     try {
@@ -169,7 +187,11 @@ export function SchedulesPage() {
         setSelectedProjectId('')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not delete project')
+      if (err instanceof ApiError && /existing tasks/i.test(err.message)) {
+        setError('This project still has tasks. Remove them first, then delete the project.')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not delete project')
+      }
     }
   }
 
@@ -282,8 +304,10 @@ export function SchedulesPage() {
                       type="number"
                       min={0}
                       step={0.5}
-                      value={effortHours}
-                      onChange={(e) => setEffortHours(Number(e.target.value))}
+                      value={Number.isFinite(effortHours) ? effortHours : ''}
+                      onChange={(e) =>
+                        setEffortHours(e.target.value === '' ? Number.NaN : Number(e.target.value))
+                      }
                       required
                     />
                   </Field>
@@ -396,8 +420,8 @@ export function SchedulesPage() {
           <p className="text-sm font-medium">Generated schedule</p>
           <p className="text-sm text-muted-foreground">
             {selectedPlan.mode} · {selectedPlan.startDate} to {selectedPlan.endDate}
-            {selectedPlan.explanationSummary
-              ? ` · ${selectedPlan.explanationSummary}`
+            {planExplanation(selectedPlan)
+              ? ` · ${planExplanation(selectedPlan)}`
               : null}
           </p>
           <ScheduleWeekPreview

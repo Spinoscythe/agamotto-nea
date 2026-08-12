@@ -21,6 +21,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { cn } from '@/lib/utils'
+import { planExplanation } from '@/lib/schedule'
 
 interface HistoryRow {
   plan: SchedulePlanResponse
@@ -48,7 +49,7 @@ export function HistoryPage() {
         )
         if (cancelled) return
         const flat = nested.flat().sort((a, b) =>
-          b.plan.generatedAt.localeCompare(a.plan.generatedAt),
+          (b.plan.generatedAt ?? '').localeCompare(a.plan.generatedAt ?? ''),
         )
         setRows(flat)
       } catch (err) {
@@ -97,30 +98,39 @@ export function HistoryPage() {
         <Card size="sm" className="py-0">
           <CardContent className="p-0">
             <ul className="flex flex-col divide-y">
-              {rows.map(({ plan, projectName }) => (
-                <li
-                  key={plan.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium">{projectName}</p>
-                      <Badge variant="secondary">{plan.mode}</Badge>
-                      <Badge variant="outline">{plan.status}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {plan.startDate} to {plan.endDate} · {plan.blocks?.length ?? 0}{' '}
-                      blocks · {new Date(plan.generatedAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <Link
-                    to={`/projects?projectId=${plan.projectId}`}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              {rows.map(({ plan, projectName }) => {
+                const explanation = planExplanation(plan)
+                return (
+                  <li
+                    key={plan.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                   >
-                    Open
-                  </Link>
-                </li>
-              ))}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium">{projectName}</p>
+                        <Badge variant="secondary">{plan.mode}</Badge>
+                        <Badge variant="outline">{plan.status}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {plan.startDate} to {plan.endDate} · {plan.blocks?.length ?? 0}{' '}
+                        blocks ·{' '}
+                        {plan.generatedAt
+                          ? new Date(plan.generatedAt).toLocaleString()
+                          : '—'}
+                      </p>
+                      {explanation ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{explanation}</p>
+                      ) : null}
+                    </div>
+                    <Link
+                      to={`/projects?projectId=${plan.projectId}`}
+                      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                    >
+                      Open
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </CardContent>
         </Card>
