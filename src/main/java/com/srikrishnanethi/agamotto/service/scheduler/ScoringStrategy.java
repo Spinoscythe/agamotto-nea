@@ -16,10 +16,17 @@ import java.util.Objects;
 public class ScoringStrategy {
 
 	/**
+	 * Urgency for due-today / overdue tasks. Strictly above due-tomorrow ({@code 1.0})
+	 * so {@code Math.max(1, daysUntil)} cannot collapse overdue into the same bucket.
+	 */
+	public static final double MAX_DEADLINE_URGENCY = 2.0;
+
+	/**
 	 * scoreTask: {@code (w_p * priority) + (w_u * deadlineUrgency) + (w_ed * estDuration)}.
 	 *
-	 * <p>Deadline urgency is {@code 1 / max(1, daysUntilDeadline)} relative to {@code asOf},
-	 * so nearer deadlines contribute a larger score component.
+	 * <p>Deadline urgency is {@code 1 / daysUntilDeadline} for future deadlines relative to
+	 * {@code asOf}. Due today or overdue ({@code daysUntil <= 0}) uses
+	 * {@link #MAX_DEADLINE_URGENCY} so nearer / missed deadlines outrank due-tomorrow.
 	 */
 	public double scoreTask(Task task, UserProfile profile, LocalDate asOf) {
 		Objects.requireNonNull(task, "task");
@@ -34,11 +41,28 @@ public class ScoringStrategy {
 	}
 
 	public double deadlineUrgency(Task task, LocalDate asOf) {
+		Objects.requireNonNull(task, "task");
+		Objects.requireNonNull(asOf, "asOf");
+		if (task.getDeadline() == null) {
+			throw new IllegalArgumentException("task deadline is required");
+		}
 		long daysUntil = ChronoUnit.DAYS.between(asOf, task.getDeadline().toLocalDate());
-		return 1.0 / Math.max(1L, daysUntil);
+		if (daysUntil <= 0) {
+			return MAX_DEADLINE_URGENCY;
+		}
+		return 1.0 / daysUntil;
 	}
 
 	public double effectiveDurationHours(Task task) {
-        return task.getCorrectedDurationHours() != null ? task.getCorrectedDurationHours() : task.getEstimatedDurationHours();
-    }
+		Objects.requireNonNull(task, "task");
+		Double corrected = task.getCorrectedDurationHours();
+		double hours = corrected != null ? corrected : task.getEstimatedDurationHours();
+		if (Double.isNaN(hours) || Double.isInfinite(hours)) {
+			throw new IllegalArgumentException("duration must be a finite number");
+		}
+		if (hours < 0) {
+			throw new IllegalArgumentException("duration must be >= 0");
+		}
+		return hours;
+	}
 }

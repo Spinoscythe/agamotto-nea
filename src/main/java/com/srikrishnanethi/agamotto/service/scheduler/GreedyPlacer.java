@@ -12,9 +12,10 @@ import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.PriorityQueue;
 
 /**
@@ -30,7 +31,9 @@ public class GreedyPlacer {
 	public static final int HIGH_COMPLEXITY_THRESHOLD = 4;
 	public static final double MAX_HIGH_COMPLEXITY_SESSION_HOURS = 2.0;
 
+	public static final int MAX_REASON_LENGTH = 1000;
 	private static final double EPSILON = 1e-9;
+	private static final double MINUTES_PER_HOUR = 60.0;
 
 	private final ScoringStrategy scoringStrategy;
 
@@ -44,9 +47,12 @@ public class GreedyPlacer {
 		if (tasks == null || tasks.isEmpty()) {
 			return blocks;
 		}
+		Objects.requireNonNull(start, "start");
+		Objects.requireNonNull(end, "end");
+		Objects.requireNonNull(profile, "profile");
 
-		// How many hours each task still needs (corrected duration if present, else estimate).
-		Map<Task, Double> remainingHours = new HashMap<>();
+		// Identity map: Task.equals is id-based, so unsaved/proxy instances must not collide.
+		Map<Task, Double> remainingHours = new IdentityHashMap<>();
 		tasks.forEach(task -> remainingHours.put(task, scoringStrategy.effectiveDurationHours(task)));
 
 		// Highest score first; partially placed tasks are offered back into this queue.
@@ -59,15 +65,21 @@ public class GreedyPlacer {
 		double hoursPerDay = workingHoursPerDay(profile);
 
 		// Walk each calendar day in the plan window.
-		for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+		LocalDate day = start;
+		while (!day.isAfter(end)) {
 			// Honour "weekdays only" if weekends are disabled.
 			if (!profile.isIncludeWeekends() && isWeekend(day)) {
+				day = nextDayOrNull(day);
+				if (day == null) {
+					break;
+				}
 				continue;
 			}
 
 			// Fresh budget and clock for this day: fill from dayStart forward.
 			double dayHoursLeft = hoursPerDay;
 			LocalDateTime cursor = LocalDateTime.of(day, dayStart);
+			LocalDateTime dayClose = LocalDateTime.of(day, dayEnd);
 
 			// Keep booking until the day is full or no unfinished tasks remain.
 			while (dayHoursLeft > EPSILON && !queue.isEmpty()) {
@@ -79,36 +91,47 @@ public class GreedyPlacer {
 					continue;
 				}
 
-				// Book the largest chunk that fits: day left, task left, and session cap.
-				// High-complexity tasks are capped at MAX_HIGH_COMPLEXITY_SESSION_HOURS.
-				double placeHours = Math.min(dayHoursLeft, Math.min(left, maxSessionHours(task)));
-				if (placeHours <= EPSILON) {
-					// Cannot place anything useful now; put the task back and move to the next day.
+				if (!cursor.isBefore(dayClose)) {
 					queue.offer(task);
 					break;
 				}
 
-				// Convert hours into an end timestamp from the current cursor.
-				LocalDateTime blockEnd = cursor.plusMinutes(Math.round(placeHours * 60.0));
-				// Clamp to preferredEnd if rounding pushed past the working day.
-				if (blockEnd.toLocalTime().isAfter(dayEnd) && !blockEnd.toLocalDate().isAfter(day)) {
-					blockEnd = LocalDateTime.of(day, dayEnd);
-					placeHours = ChronoUnit.MINUTES.between(cursor, blockEnd) / 60.0;
-					if (placeHours <= EPSILON) {
+				// Book the largest chunk that fits: day left, task left, and session cap.
+				// High-complexity tasks are capped at MAX_HIGH_COMPLEXITY_SESSION_HOURS.
+				double placeHours = Math.min(dayHoursLeft, Math.min(left, maxSessionHours(task)));
+				long minutes = Math.round(placeHours * MINUTES_PER_HOUR);
+				if (minutes <= 0) {
+					if (left * MINUTES_PER_HOUR >= 1.0 - EPSILON) {
+						// Day leftover is smaller than a calendar minute; try tomorrow.
+						queue.offer(task);
+						break;
+					}
+					// Sub-minute remainder cannot be represented; delay it at the end.
+					continue;
+				}
+
+				LocalDateTime blockEnd = cursor.plusMinutes(minutes);
+				// Clamp to preferredEnd if rounding pushed past the working day (including next-day overflow).
+				if (blockEnd.isAfter(dayClose)) {
+					blockEnd = dayClose;
+					minutes = ChronoUnit.MINUTES.between(cursor, blockEnd);
+					if (minutes <= 0) {
 						queue.offer(task);
 						break;
 					}
 				}
+				placeHours = minutes / MINUTES_PER_HOUR;
 
 				// Record a SCHEDULED block for this chunk (with an explanation reason).
 				double score = scoringStrategy.scoreTask(task, profile, start);
 				boolean split = left > placeHours + EPSILON;
+				boolean complexitySplit = split && task.getComplexity() >= HIGH_COMPLEXITY_THRESHOLD;
 				blocks.add(createBlock(
 						task,
 						cursor,
 						blockEnd,
 						BlockDecision.SCHEDULED,
-						buildScheduledReason(task, score, placeHours, day, split)));
+						buildScheduledReason(task, score, placeHours, day, split, complexitySplit)));
 
 				// Consume the booked hours from the task and from today's budget.
 				left -= placeHours;
@@ -121,13 +144,21 @@ public class GreedyPlacer {
 					queue.offer(task);
 				}
 			}
+
+			day = nextDayOrNull(day);
+			if (day == null) {
+				break;
+			}
 		}
 
 		// Anything still unplaced after the last day becomes DELAYED (kept, but no free slot).
 		for (Task task : tasks) {
+			double original = scoringStrategy.effectiveDurationHours(task);
 			double left = remainingHours.getOrDefault(task, 0.0);
 			if (left > EPSILON) {
 				blocks.add(createBlock(task, null, null, BlockDecision.DELAYED, buildDelayedReason(task, left, end)));
+			} else if (original <= EPSILON) {
+				blocks.add(createBlock(task, null, null, BlockDecision.DELAYED, buildZeroDurationReason(task)));
 			}
 		}
 
@@ -135,6 +166,10 @@ public class GreedyPlacer {
 	}
 
 	public double workingHoursPerDay(UserProfile profile) {
+		Objects.requireNonNull(profile, "profile");
+		if (profile.getPreferredStart() == null || profile.getPreferredEnd() == null) {
+			throw new IllegalArgumentException("preferredStart and preferredEnd are required");
+		}
 		double hours = ChronoUnit.MINUTES.between(profile.getPreferredStart(), profile.getPreferredEnd()) / 60.0;
 		if (hours <= 0) {
 			throw new IllegalArgumentException("preferredEnd must be after preferredStart");
@@ -166,12 +201,18 @@ public class GreedyPlacer {
 		block.setStartTime(start);
 		block.setEndTime(end);
 		block.setDecision(decision);
-		block.setReason(reason);
+		block.setReason(clampReason(reason));
 		block.setManuallyOverridden(false);
 		return block;
 	}
 
-	private String buildScheduledReason(Task task, double score, double placeHours, LocalDate day, boolean split) {
+	private String buildScheduledReason(
+			Task task,
+			double score,
+			double placeHours,
+			LocalDate day,
+			boolean split,
+			boolean complexitySplit) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("Scheduled on ").append(day)
 				.append(" for ").append(formatHours(placeHours)).append("h")
@@ -179,12 +220,14 @@ public class GreedyPlacer {
 				.append(" (priority=").append(task.getPriority())
 				.append(", deadline=").append(task.getDeadline())
 				.append(", duration=").append(formatHours(scoringStrategy.effectiveDurationHours(task))).append("h)");
-		if (split) {
+		if (complexitySplit) {
 			sb.append(". Session split: complexity=")
 					.append(task.getComplexity())
 					.append(" >= ").append(HIGH_COMPLEXITY_THRESHOLD)
 					.append(" so blocks are capped at ")
 					.append(formatHours(MAX_HIGH_COMPLEXITY_SESSION_HOURS)).append("h");
+		} else if (split) {
+			sb.append(". Split across days because remaining work exceeds today's free hours");
 		}
 		return sb.toString();
 	}
@@ -196,11 +239,35 @@ public class GreedyPlacer {
 				+ ", deadline=" + task.getDeadline() + ").";
 	}
 
+	private String buildZeroDurationReason(Task task) {
+		return "Delayed: estimated duration is 0h so there is nothing to place"
+				+ " (priority=" + task.getPriority()
+				+ ", deadline=" + task.getDeadline() + ").";
+	}
+
+	/** {@code null} when {@code day} is {@link LocalDate#MAX} so {@code plusDays(1)} cannot throw. */
+	private static LocalDate nextDayOrNull(LocalDate day) {
+		if (day.equals(LocalDate.MAX)) {
+			return null;
+		}
+		return day.plusDays(1);
+	}
+
 	private static boolean isWeekend(LocalDate day) {
 		return day.getDayOfWeek().getValue() >= 6;
 	}
 
 	private static String formatHours(double hours) {
 		return String.format(java.util.Locale.ROOT, "%.2f", hours);
+	}
+
+	public static String clampReason(String reason) {
+		if (reason == null || reason.isBlank()) {
+			return "Unspecified scheduling decision";
+		}
+		if (reason.length() <= MAX_REASON_LENGTH) {
+			return reason;
+		}
+		return reason.substring(0, MAX_REASON_LENGTH - 3) + "...";
 	}
 }

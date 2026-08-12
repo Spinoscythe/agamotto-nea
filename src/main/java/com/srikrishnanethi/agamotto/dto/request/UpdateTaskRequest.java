@@ -12,8 +12,8 @@ public record UpdateTaskRequest(
 		@Size(max = 100) String category,
 		@Min(1) @Max(5) Integer priority,
 		@Future LocalDateTime deadline,
-		@Positive Double estimatedDurationHours,
-		@Positive Double correctedDurationHours,
+		@Positive @DecimalMax("1000") Double estimatedDurationHours,
+		@Positive @DecimalMax("1000") Double correctedDurationHours,
 		@Min(1) @Max(5) Integer complexity,
 		TaskStatus status) {
 }

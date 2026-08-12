@@ -14,6 +14,6 @@ public record CreateTaskRequest(
 		@NotBlank @Size(max = 100) String category,
 		@Min(1) @Max(5) int priority,
 		@NotNull @Future LocalDateTime deadline,
-		@Positive double estimatedDurationHours,
+		@Positive @DecimalMax("1000") double estimatedDurationHours,
 		@Min(1) @Max(5) int complexity) {
 }
