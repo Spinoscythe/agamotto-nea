@@ -8,4 +8,6 @@ import java.util.List;
 public interface SchedulePlanRepository extends JpaRepository<SchedulePlan, String> {
 
 	List<SchedulePlan> findByProjectIdOrderByGeneratedAtDesc(String projectId);
+
+	boolean existsByProjectId(String projectId);
 }

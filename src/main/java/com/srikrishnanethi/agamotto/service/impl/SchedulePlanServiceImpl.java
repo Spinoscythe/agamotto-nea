@@ -9,6 +9,7 @@ import com.srikrishnanethi.agamotto.exception.ScheduleConflictException;
 import com.srikrishnanethi.agamotto.repositories.*;
 import com.srikrishnanethi.agamotto.service.SchedulePlanService;
 import com.srikrishnanethi.agamotto.service.scheduler.GeneratedSchedule;
+import com.srikrishnanethi.agamotto.service.scheduler.GreedyPlacer;
 import com.srikrishnanethi.agamotto.service.scheduler.RescheduleResult;
 import com.srikrishnanethi.agamotto.service.scheduler.ScheduleResult;
 import com.srikrishnanethi.agamotto.service.scheduler.SchedulerEngine;
@@ -82,6 +83,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
         plan.setStartDate(startDate);
         plan.setEndDate(endDate);
         plan.setGeneratedAt(Instant.now());
+        plan.setExplanationSummary(result.explanationSummary());
 
         for (ScheduleBlock block : result.blocks()) {
             block.setSchedule(plan);
@@ -120,6 +122,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
     }
 
     @Override
+    @Transactional
     public ScheduleBlock overrideBlock(String blockId,
                                        LocalDateTime startTime,
                                        LocalDateTime endTime,
@@ -137,7 +140,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
             block.setDecision(decision);
         }
         if (reason != null && !reason.isBlank()) {
-            block.setReason(reason.trim());
+            block.setReason(GreedyPlacer.clampReason(reason.trim()));
         }
 
         LocalDateTime start = block.getStartTime();
@@ -152,7 +155,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
 
         block.setManuallyOverridden(true);
         if (block.getReason() == null || block.getReason().isBlank()) {
-            block.setReason("Manually overridden by user");
+            block.setReason(GreedyPlacer.clampReason("Manually overridden by user"));
         }
         ScheduleBlock saved = scheduleBlockRepository.save(block);
         initializeBlockGraph(saved);
@@ -164,34 +167,25 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
     public RescheduleResult rescheduleBlock(String blockId, LocalDateTime startTime, LocalDateTime endTime, String reason) {
         ScheduleBlock block = getBlockById(blockId);
 
-        if (startTime != null || endTime != null) {
-            if (startTime == null || endTime == null) {
-                throw new IllegalArgumentException("Both startTime and endTime are required to move a block");
-            }
-            if (!endTime.isAfter(startTime)) {
-                throw new IllegalArgumentException("endTime must be after startTime");
-            }
-
-            assertNoScheduledOverlap(block, startTime, endTime);
-
-            block.setStartTime(startTime);
-            block.setEndTime(endTime);
-            block.setDecision(BlockDecision.SCHEDULED);
-            block.setManuallyOverridden(true);
-            block.setReason(reason != null && !reason.isBlank()
-                    ? reason.trim()
-                    : "Rescheduled by user to " + startTime + " – " + endTime);
-            ScheduleBlock saved = scheduleBlockRepository.save(block);
-            initializeBlockGraph(saved);
-            return new RescheduleResult(saved, null);
+        if (startTime == null || endTime == null) {
+            throw new IllegalArgumentException("startTime and endTime are required to reschedule a block");
+        }
+        if (!endTime.isAfter(startTime)) {
+            throw new IllegalArgumentException("endTime must be after startTime");
         }
 
-        SchedulePlan plan = block.getSchedule();
-        GeneratedSchedule regenerated = generateAndPersist(
-                plan.getProject().getId(),
-                plan.getStartDate(),
-                plan.getEndDate());
-        return new RescheduleResult(null, regenerated);
+        assertNoScheduledOverlap(block, startTime, endTime);
+
+        block.setStartTime(startTime);
+        block.setEndTime(endTime);
+        block.setDecision(BlockDecision.SCHEDULED);
+        block.setManuallyOverridden(true);
+        block.setReason(reason != null && !reason.isBlank()
+                ? GreedyPlacer.clampReason(reason.trim())
+                : "Rescheduled by user to " + startTime + " – " + endTime);
+        ScheduleBlock saved = scheduleBlockRepository.save(block);
+        initializeBlockGraph(saved);
+        return new RescheduleResult(saved, null);
     }
 
     private void assertNoScheduledOverlap(ScheduleBlock moving, LocalDateTime start, LocalDateTime end) {
