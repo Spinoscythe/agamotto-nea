@@ -71,15 +71,12 @@ public class ScheduleController {
 	@PostMapping("/schedule-blocks/{blockId}/reschedule")
 	public RescheduleResponse reschedule(
 			@PathVariable String blockId,
-			@RequestBody(required = false) RescheduleBlockRequest request) {
-		RescheduleBlockRequest body = request == null
-				? new RescheduleBlockRequest(null, null, null)
-				: request;
+			@Valid @RequestBody RescheduleBlockRequest request) {
 		return scheduleMapper.toRescheduleResponse(schedulePlanService.rescheduleBlock(
 				blockId,
-				body.startTime(),
-				body.endTime(),
-				body.reason()));
+				request.startTime(),
+				request.endTime(),
+				request.reason()));
 	}
 
 	private ScheduleBlockResponse applyOverride(String blockId, OverrideBlockRequest request) {

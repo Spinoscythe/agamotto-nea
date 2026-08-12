@@ -43,6 +43,9 @@ public class SchedulePlan extends BaseEntity {
     @Column(name = "generated_at", nullable = false)
     private Instant generatedAt = Instant.now();
 
+    @Column(name = "explanation_summary", length = 1024)
+    private String explanationSummary;
+
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ScheduleBlock> blocks = new ArrayList<>();
 
@@ -92,6 +95,14 @@ public class SchedulePlan extends BaseEntity {
 
     public void setGeneratedAt(Instant generatedAt) {
         this.generatedAt = generatedAt;
+    }
+
+    public String getExplanationSummary() {
+        return explanationSummary;
+    }
+
+    public void setExplanationSummary(String explanationSummary) {
+        this.explanationSummary = explanationSummary;
     }
 
     public List<ScheduleBlock> getBlocks() {

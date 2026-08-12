@@ -27,7 +27,7 @@ public class ScheduleMapper {
 	}
 
 	public SchedulePlanResponse toPlanResponse(SchedulePlan plan) {
-		return toPlanResponse(plan, null);
+		return toPlanResponse(plan, plan.getExplanationSummary());
 	}
 
 	public SchedulePlanResponse toPlanResponse(GeneratedSchedule generated) {
@@ -35,7 +35,8 @@ public class ScheduleMapper {
 	}
 
 	public SchedulePlanResponse toPlanResponse(SchedulePlan plan, String explanationSummary) {
-		List<ScheduleBlockResponse> blocks = plan.getBlocks().stream()
+		List<ScheduleBlock> source = plan.getBlocks() == null ? List.of() : plan.getBlocks();
+		List<ScheduleBlockResponse> blocks = source.stream()
 				.map(this::toBlockResponse)
 				.toList();
 		return new SchedulePlanResponse(
