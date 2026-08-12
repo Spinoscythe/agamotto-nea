@@ -1,11 +1,7 @@
 package com.srikrishnanethi.agamotto.entities;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import com.srikrishnanethi.agamotto.entities.enums.NotificationType;
+import jakarta.persistence.*;
 
 import java.time.Instant;
 
@@ -32,6 +28,18 @@ public class Notification extends BaseEntity {
 
 	@Column(name = "sent_at")
 	private Instant sentAt;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "project_id")
+	private Project project;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "invite_id")
+	private ProjectInvite invite;
+
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 30)
+	private NotificationType type = NotificationType.DEADLINE;
 
 	public User getUser() {
 		return user;
@@ -79,5 +87,29 @@ public class Notification extends BaseEntity {
 
 	public void setSentAt(Instant sentAt) {
 		this.sentAt = sentAt;
+	}
+
+	public Project getProject() {
+		return project;
+	}
+
+	public void setProject(Project project) {
+		this.project = project;
+	}
+
+	public ProjectInvite getInvite() {
+		return invite;
+	}
+
+	public void setInvite(ProjectInvite invite) {
+		this.invite = invite;
+	}
+
+	public NotificationType getType() {
+		return type;
+	}
+
+	public void setType(NotificationType type) {
+		this.type = type;
 	}
 }
