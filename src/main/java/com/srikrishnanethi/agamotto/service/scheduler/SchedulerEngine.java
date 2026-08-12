@@ -8,6 +8,7 @@ import com.srikrishnanethi.agamotto.entities.enums.ScheduleMode;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -27,6 +28,8 @@ public class SchedulerEngine {
 
 	public static final int HIGH_COMPLEXITY_THRESHOLD = GreedyPlacer.HIGH_COMPLEXITY_THRESHOLD;
 	public static final double MAX_HIGH_COMPLEXITY_SESSION_HOURS = GreedyPlacer.MAX_HIGH_COMPLEXITY_SESSION_HOURS;
+	/** Inclusive calendar-day cap so {@code LocalDate.MAX} / huge ranges cannot hang or throw. */
+	public static final int MAX_PLAN_DAYS = 366 * 2;
 
 	private static final double EPSILON = 1e-9;
 
@@ -45,12 +48,19 @@ public class SchedulerEngine {
 
 	/** Serenity when total hours fit capacity; otherwise Crunch. */
 	public ScheduleMode selectMode(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+		Objects.requireNonNull(tasks, "tasks");
+		Objects.requireNonNull(profile, "profile");
 		double total = sumEffectiveHours(tasks);
 		double available = availableHours(start, end, profile);
 		return total <= available + EPSILON ? ScheduleMode.SERENITY : ScheduleMode.CRUNCH;
 	}
 
 	public ScheduleResult generate(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+		Objects.requireNonNull(tasks, "tasks");
+		Objects.requireNonNull(profile, "profile");
+		validateRange(start, end);
+		validateProfile(profile);
+		validateTasks(tasks);
 		if (selectMode(tasks, start, end, profile) == ScheduleMode.SERENITY) {
 			return runSerenity(tasks, start, end, profile);
 		}
@@ -62,6 +72,8 @@ public class SchedulerEngine {
 		Objects.requireNonNull(tasks, "tasks");
 		validateRange(start, end);
 		Objects.requireNonNull(profile, "profile");
+		validateProfile(profile);
+		validateTasks(tasks);
 
 		List<ScheduleBlock> blocks = greedyPlacer.place(tasks, start, end, profile);
 		String summary = "Serenity mode: workload fits available hours ("
@@ -79,6 +91,8 @@ public class SchedulerEngine {
 		Objects.requireNonNull(tasks, "tasks");
 		validateRange(start, end);
 		Objects.requireNonNull(profile, "profile");
+		validateProfile(profile);
+		validateTasks(tasks);
 
 		List<Task> byDeadline = new ArrayList<>(tasks);
 		byDeadline.sort(Comparator
@@ -86,6 +100,10 @@ public class SchedulerEngine {
 				.thenComparing(t -> t.getId() == null ? "" : t.getId()));
 
 		double available = availableHours(start, end, profile);
+		if (available <= EPSILON) {
+			return emptyWindowResult(tasks, profile);
+		}
+
 		BestFitResult fit = bestFit(byDeadline, available);
 
 		List<ScheduleBlock> blocks = new ArrayList<>(greedyPlacer.place(fit.remaining(), start, end, profile));
@@ -112,11 +130,17 @@ public class SchedulerEngine {
 
 	public double availableHours(LocalDate start, LocalDate end, UserProfile profile) {
 		validateRange(start, end);
+		Objects.requireNonNull(profile, "profile");
 		long days = 0;
-		for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+		LocalDate day = start;
+		while (!day.isAfter(end)) {
 			if (profile.isIncludeWeekends() || !isWeekend(day)) {
 				days++;
 			}
+			if (day.equals(LocalDate.MAX)) {
+				break;
+			}
+			day = day.plusDays(1);
 		}
 		return days * workingHoursPerDay(profile);
 	}
@@ -156,7 +180,7 @@ public class SchedulerEngine {
 		block.setStartTime(start);
 		block.setEndTime(end);
 		block.setDecision(decision);
-		block.setReason(reason);
+		block.setReason(GreedyPlacer.clampReason(reason));
 		block.setManuallyOverridden(false);
 		return block;
 	}
@@ -169,12 +193,66 @@ public class SchedulerEngine {
 				+ formatHours(availableHours) + "h). Lower priority / shorter tasks removed first.";
 	}
 
+	private ScheduleResult emptyWindowResult(List<Task> tasks, UserProfile profile) {
+		List<ScheduleBlock> blocks = new ArrayList<>();
+		String reason = profile.isIncludeWeekends()
+				? "No working days in the selected range."
+				: "No working days in the selected range (weekends are excluded).";
+		for (Task task : tasks) {
+			blocks.add(createBlock(task, null, null, BlockDecision.EXCLUDED, reason));
+		}
+		String summary = reason + " All " + tasks.size() + " task(s) were left unplaced.";
+		return new ScheduleResult(ScheduleMode.CRUNCH, summary, List.copyOf(blocks));
+	}
+
 	private void validateRange(LocalDate start, LocalDate end) {
 		Objects.requireNonNull(start, "start");
 		Objects.requireNonNull(end, "end");
 		if (end.isBefore(start)) {
 			throw new IllegalArgumentException("end must be on or after start");
 		}
+		if (start.equals(LocalDate.MAX) || end.equals(LocalDate.MAX)) {
+			throw new IllegalArgumentException("plan dates must be real calendar days");
+		}
+		long inclusiveDays = ChronoUnit.DAYS.between(start, end) + 1;
+		if (inclusiveDays > MAX_PLAN_DAYS) {
+			throw new IllegalArgumentException(
+					"plan range must be at most " + MAX_PLAN_DAYS + " days");
+		}
+	}
+
+	private void validateProfile(UserProfile profile) {
+		greedyPlacer.workingHoursPerDay(profile);
+		if (!Double.isFinite(profile.getWeightPriority())
+				|| !Double.isFinite(profile.getWeightUrgency())
+				|| !Double.isFinite(profile.getWeightDuration())) {
+			throw new IllegalArgumentException("score weights must be finite numbers");
+		}
+	}
+
+	private void validateTasks(List<Task> tasks) {
+		for (int i = 0; i < tasks.size(); i++) {
+			Task task = tasks.get(i);
+			if (task == null) {
+				throw new IllegalArgumentException("tasks must not contain null (index " + i + ")");
+			}
+			if (task.getDeadline() == null) {
+				throw new IllegalArgumentException("Task '" + taskLabel(task) + "' is missing a deadline");
+			}
+			try {
+				scoringStrategy.effectiveDurationHours(task);
+			} catch (IllegalArgumentException ex) {
+				throw new IllegalArgumentException(
+						"Task '" + taskLabel(task) + "' has invalid duration: " + ex.getMessage(), ex);
+			}
+		}
+	}
+
+	private static String taskLabel(Task task) {
+		if (task.getTitle() != null && !task.getTitle().isBlank()) {
+			return task.getTitle();
+		}
+		return task.getId() != null ? task.getId() : "untitled";
 	}
 
 	private static String formatHours(double hours) {
