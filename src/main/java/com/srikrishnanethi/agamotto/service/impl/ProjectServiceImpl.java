@@ -5,6 +5,7 @@ import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.exception.ConflictException;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
+import com.srikrishnanethi.agamotto.repositories.SchedulePlanRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserRepository;
 import com.srikrishnanethi.agamotto.service.ProjectService;
@@ -22,11 +23,16 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final TaskRepository taskRepository;
+    private final SchedulePlanRepository schedulePlanRepository;
 
-    public ProjectServiceImpl(ProjectRepository projectRepository, UserRepository userRepository, TaskRepository taskRepository) {
+    public ProjectServiceImpl(ProjectRepository projectRepository,
+                              UserRepository userRepository,
+                              TaskRepository taskRepository,
+                              SchedulePlanRepository schedulePlanRepository) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.taskRepository = taskRepository;
+        this.schedulePlanRepository = schedulePlanRepository;
     }
 
     @Override
@@ -76,6 +82,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    @Transactional
     public Project update(String projectId,
                           String name,
                           String description,
@@ -111,6 +118,9 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = getById(projectId);
         if (!taskRepository.findByProjectId(projectId).isEmpty()) {
             throw new ConflictException("Cannot delete project with existing tasks: " + projectId);
+        }
+        if (schedulePlanRepository.existsByProjectId(projectId)) {
+            throw new ConflictException("Cannot delete project with existing schedules: " + projectId);
         }
         projectRepository.delete(project);
     }
