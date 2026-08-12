@@ -79,6 +79,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Task getById(String taskId) {
         Task task = this.taskRepository.findById(taskId).orElseThrow(() -> new ResourceNotFoundException("Task not found: " + taskId));
         initializeProject(task);
@@ -86,6 +87,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Task> listByProject(String projectId) {
         List<Task> tasks = this.taskRepository.findByProjectId(projectId);
         tasks.forEach(TaskServiceImpl::initializeProject);
@@ -93,6 +95,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    @Transactional
     public Task update(String taskId,
                        String actorUserId,
                        String title,
@@ -169,6 +172,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    @Transactional
     public Task delete(String taskId, String userId) {
         Task task = this.getById(taskId);
         User user = requireUser(userId);
@@ -186,7 +190,12 @@ public class TaskServiceImpl implements TaskService {
     @Override
     @Transactional(readOnly = true)
     public List<TaskHistory> historyForTask(String taskId) {
-        return this.taskHistoryRepository.findByTaskIdOrderByChangedAtDesc(taskId);
+        List<TaskHistory> history = this.taskHistoryRepository.findByTaskIdOrderByChangedAtDesc(taskId);
+        history.forEach(entry -> {
+            Hibernate.initialize(entry.getTask());
+            Hibernate.initialize(entry.getChangedBy());
+        });
+        return history;
     }
 
     private static void initializeProject(Task task) {

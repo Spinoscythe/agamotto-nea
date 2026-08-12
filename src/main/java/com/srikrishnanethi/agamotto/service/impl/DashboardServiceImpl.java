@@ -84,7 +84,9 @@ public class DashboardServiceImpl implements DashboardService {
         report.setExcludedCount(excluded);
         report.setCompletedCount(completed);
         report.setGeneratedAt(Instant.now());
-        return dashboardReportRepository.save(report);
+        DashboardReport saved = dashboardReportRepository.save(report);
+        Hibernate.initialize(saved.getUser());
+        return saved;
     }
 
     @Override

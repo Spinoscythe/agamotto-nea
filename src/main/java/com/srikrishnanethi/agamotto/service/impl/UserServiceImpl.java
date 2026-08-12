@@ -6,11 +6,13 @@ import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.exception.DuplicateEmailException;
 import com.srikrishnanethi.agamotto.exception.InvalidCredentialsException;
+import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.mapper.UserMapper;
 import com.srikrishnanethi.agamotto.repositories.UserProfileRepository;
 import com.srikrishnanethi.agamotto.repositories.UserRepository;
 import com.srikrishnanethi.agamotto.jwt.JwtService;
 import com.srikrishnanethi.agamotto.service.UserService;
+import org.hibernate.Hibernate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,11 +53,13 @@ public class UserServiceImpl implements UserService {
         user.setPasswordHash(hashPass);
 
         User savedUser = this.userRepository.save(user);
+        initializeProfile(savedUser);
         String token = jwtService.issueToken(savedUser.getId(), savedUser.getEmail());
         return new AuthenticatedUser(savedUser, token);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AuthenticatedUser login(String email, String password) {
         Optional<User> foundUser = this.userRepository.findByEmail(email.trim().toLowerCase());
         if (foundUser.isEmpty()) throw new InvalidCredentialsException();
@@ -64,16 +68,22 @@ public class UserServiceImpl implements UserService {
         boolean goodPassword = this.passwordEncoder.matches(password, user.getPasswordHash());
         if (!goodPassword) throw new InvalidCredentialsException();
 
+        initializeProfile(user);
         String token = jwtService.issueToken(user.getId(), user.getEmail());
         return new AuthenticatedUser(user, token);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public User getById(String userId) {
-        return this.userRepository.findById(userId).orElseThrow();
+        User user = this.userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        initializeProfile(user);
+        return user;
     }
 
     @Override
+    @Transactional
     public User updateUser(String userId, UpdateUserRequest request) {
         User user = this.getById(userId);
 
@@ -117,6 +127,14 @@ public class UserServiceImpl implements UserService {
 
         profile.setUpdatedAt(Instant.now());
         userProfileRepository.save(profile);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        initializeProfile(saved);
+        return saved;
+    }
+
+    private static void initializeProfile(User user) {
+        if (user.getProfile() != null) {
+            Hibernate.initialize(user.getProfile());
+        }
     }
 }
