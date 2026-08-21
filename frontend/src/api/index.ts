@@ -8,7 +8,10 @@ import type {
   LoginRequest,
   NotificationResponse,
   OverrideBlockRequest,
+  ProjectInviteResponse,
+  ProjectMemberResponse,
   ProjectResponse,
+  ProjectRole,
   RescheduleBlockRequest,
   RegisterRequest,
   ReportPeriod,
@@ -94,4 +97,25 @@ export const notificationsApi = {
     api.get<NotificationResponse[]>('/api/notifications', { userId }),
   markRead: (notificationId: string) =>
     api.post<NotificationResponse>(`/api/notifications/${notificationId}/read`),
+}
+
+export const collaborationApi = {
+  listMembers: (projectId: string) =>
+    api.get<ProjectMemberResponse[]>(`/api/projects/${projectId}/members`),
+  listInvites: (projectId: string) =>
+    api.get<ProjectInviteResponse[]>(`/api/projects/${projectId}/invites`),
+  invite: (projectId: string, body: { email: string; role: ProjectRole }) =>
+    api.post<ProjectInviteResponse>(`/api/projects/${projectId}/invites`, body),
+  cancelInvite: (projectId: string, inviteId: string) =>
+    api.delete<void>(`/api/projects/${projectId}/invites/${inviteId}`),
+  updateRole: (projectId: string, userId: string, role: ProjectRole) =>
+    api.patch<ProjectMemberResponse>(`/api/projects/${projectId}/members/${userId}`, { role }),
+  removeMember: (projectId: string, userId: string) =>
+    api.delete<void>(`/api/projects/${projectId}/members/${userId}`),
+  leave: (projectId: string) =>
+    api.post<void>(`/api/projects/${projectId}/leave`),
+  acceptInvite: (inviteId: string) =>
+    api.post<ProjectInviteResponse>(`/api/invites/${inviteId}/accept`),
+  declineInvite: (inviteId: string) =>
+    api.post<ProjectInviteResponse>(`/api/invites/${inviteId}/decline`),
 }

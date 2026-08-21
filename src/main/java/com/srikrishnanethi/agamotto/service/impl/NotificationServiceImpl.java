@@ -3,6 +3,7 @@ package com.srikrishnanethi.agamotto.service.impl;
 import com.srikrishnanethi.agamotto.entities.Notification;
 import com.srikrishnanethi.agamotto.entities.Task;
 import com.srikrishnanethi.agamotto.entities.User;
+import com.srikrishnanethi.agamotto.entities.enums.NotificationType;
 import com.srikrishnanethi.agamotto.exception.ForbiddenException;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.NotificationRepository;
@@ -60,6 +61,7 @@ public class NotificationServiceImpl implements NotificationService {
 		Notification notification = new Notification();
 		notification.setUser(user);
 		notification.setTask(task);
+		notification.setType(task == null ? NotificationType.SCHEDULE : NotificationType.GENERAL);
 		notification.setMessage(clampMessage(message));
 		notification.setRead(false);
 		notification.setCreatedAt(Instant.now());
@@ -79,6 +81,12 @@ public class NotificationServiceImpl implements NotificationService {
 		}
 		if (notification.getTask() != null) {
 			Hibernate.initialize(notification.getTask());
+		}
+		if (notification.getProject() != null) {
+			Hibernate.initialize(notification.getProject());
+		}
+		if (notification.getInvite() != null) {
+			Hibernate.initialize(notification.getInvite());
 		}
 	}
 }

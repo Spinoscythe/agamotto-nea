@@ -35,6 +35,8 @@ export AGAMOTTO_JWT_SECRET=a-long-random-dev-secret
 
 API routes other than `/api/auth/register` and `/api/auth/login` require `Authorization: Bearer <token>`.
 
+Project owners can invite registered users as `EDITOR` or `VIEWER` from the Projects page. Invites appear in Notifications. STOMP WebSocket endpoint: `/ws` (Bearer token on CONNECT).
+
 **Frontend**:
 
 ```bash

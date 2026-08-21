@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ApiError,
+  collaborationApi,
   notificationsApi,
   type NotificationResponse,
 } from '@/api'
@@ -56,11 +57,25 @@ export function NotificationsPage() {
     }
   }
 
+  async function respondToInvite(notification: NotificationResponse, accept: boolean) {
+    if (!notification.inviteId) return
+    try {
+      if (accept) {
+        await collaborationApi.acceptInvite(notification.inviteId)
+      } else {
+        await collaborationApi.declineInvite(notification.inviteId)
+      }
+      setNotifications((prev) => prev.filter((n) => n.id !== notification.id))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not respond to invite')
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Notifications"
-        description="Unread alerts for schedule changes and task updates."
+        description="Unread alerts for schedule changes, invitations, and task updates."
       />
 
       {error ? (
@@ -98,13 +113,33 @@ export function NotificationsPage() {
                       {new Date(n.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void markRead(n.id)}
-                  >
-                    Mark read
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {n.type === 'PROJECT_INVITE' && n.inviteId ? (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => void respondToInvite(n, true)}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void respondToInvite(n, false)}
+                        >
+                          Decline
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void markRead(n.id)}
+                      >
+                        Mark read
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

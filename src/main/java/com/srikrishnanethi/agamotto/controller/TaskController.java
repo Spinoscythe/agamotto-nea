@@ -7,8 +7,9 @@ import com.srikrishnanethi.agamotto.dto.response.TaskResponse;
 import com.srikrishnanethi.agamotto.entities.Task;
 import com.srikrishnanethi.agamotto.mapper.TaskMapper;
 import com.srikrishnanethi.agamotto.security.AgamottoSecurity;
-import com.srikrishnanethi.agamotto.service.ProjectService;
+import com.srikrishnanethi.agamotto.service.ProjectAccessService;
 import com.srikrishnanethi.agamotto.service.TaskService;
+import com.srikrishnanethi.agamotto.service.realtime.ProjectEventPublisher;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,12 +36,18 @@ public class TaskController {
 
     private final TaskService taskService;
     private final TaskMapper taskMapper;
-    private final ProjectService projectService;
+    private final ProjectAccessService projectAccessService;
+    private final ProjectEventPublisher projectEventPublisher;
 
-    public TaskController(TaskService taskService, TaskMapper taskMapper, ProjectService projectService) {
+    public TaskController(
+            TaskService taskService,
+            TaskMapper taskMapper,
+            ProjectAccessService projectAccessService,
+            ProjectEventPublisher projectEventPublisher) {
         this.taskService = taskService;
         this.taskMapper = taskMapper;
-        this.projectService = projectService;
+        this.projectAccessService = projectAccessService;
+        this.projectEventPublisher = projectEventPublisher;
     }
 
     @PostMapping("/projects/{projectId}/tasks")
@@ -50,8 +57,8 @@ public class TaskController {
             @Valid @RequestBody CreateTaskRequest request) {
         String actorId = AgamottoSecurity.currentUserId();
         AgamottoSecurity.requireSelf(request.actorUserId());
-        AgamottoSecurity.requireOwner(projectService.getById(projectId));
-        return taskMapper.toResponse(taskService.create(
+        projectAccessService.requireEdit(actorId, projectId);
+        TaskResponse created = taskMapper.toResponse(taskService.create(
                 projectId,
                 actorId,
                 request.title(),
@@ -61,11 +68,13 @@ public class TaskController {
                 request.deadline(),
                 request.estimatedDurationHours(),
                 request.complexity()));
+        projectEventPublisher.publishTaskChanged(projectId, actorId);
+        return created;
     }
 
     @GetMapping("/projects/{projectId}/tasks")
     public List<TaskResponse> listByProject(@PathVariable String projectId) {
-        AgamottoSecurity.requireOwner(projectService.getById(projectId));
+        projectAccessService.requireView(AgamottoSecurity.currentUserId(), projectId);
         return taskService.listByProject(projectId).stream()
                 .map(taskMapper::toResponse)
                 .toList();
@@ -75,7 +84,7 @@ public class TaskController {
     public TaskResponse get(
             @PathVariable(required = false) String projectId,
             @PathVariable String taskId) {
-        return taskMapper.toResponse(requireOwnedTask(projectId, taskId));
+        return taskMapper.toResponse(requireAccessibleTask(projectId, taskId, false));
     }
 
     @PatchMapping("/projects/{projectId}/tasks/{taskId}")
@@ -83,16 +92,20 @@ public class TaskController {
             @PathVariable String projectId,
             @PathVariable String taskId,
             @Valid @RequestBody UpdateTaskRequest request) {
-        requireOwnedTask(projectId, taskId);
-        return applyUpdate(taskId, request);
+        Task task = requireAccessibleTask(projectId, taskId, true);
+        TaskResponse updated = applyUpdate(taskId, request);
+        projectEventPublisher.publishTaskChanged(task.getProject().getId(), AgamottoSecurity.currentUserId());
+        return updated;
     }
 
     @RequestMapping(path = "/tasks/{taskId}", method = {RequestMethod.PUT, RequestMethod.PATCH})
     public TaskResponse updateFlat(
             @PathVariable String taskId,
             @Valid @RequestBody UpdateTaskRequest request) {
-        requireOwnedTask(null, taskId);
-        return applyUpdate(taskId, request);
+        Task task = requireAccessibleTask(null, taskId, true);
+        TaskResponse updated = applyUpdate(taskId, request);
+        projectEventPublisher.publishTaskChanged(task.getProject().getId(), AgamottoSecurity.currentUserId());
+        return updated;
     }
 
     @DeleteMapping("/projects/{projectId}/tasks/{taskId}")
@@ -100,25 +113,31 @@ public class TaskController {
             @PathVariable String projectId,
             @PathVariable String taskId,
             @RequestParam(required = false) String actorUserId) {
-        requireOwnedTask(projectId, taskId);
+        Task task = requireAccessibleTask(projectId, taskId, true);
         AgamottoSecurity.requireSelf(actorUserId);
-        return taskMapper.toResponse(taskService.delete(taskId, AgamottoSecurity.currentUserId()));
+        String actorId = AgamottoSecurity.currentUserId();
+        TaskResponse deleted = taskMapper.toResponse(taskService.delete(taskId, actorId));
+        projectEventPublisher.publishTaskChanged(task.getProject().getId(), actorId);
+        return deleted;
     }
 
     @DeleteMapping("/tasks/{taskId}")
     public TaskResponse deleteFlat(
             @PathVariable String taskId,
             @RequestParam(required = false) String actorUserId) {
-        requireOwnedTask(null, taskId);
+        Task task = requireAccessibleTask(null, taskId, true);
         AgamottoSecurity.requireSelf(actorUserId);
-        return taskMapper.toResponse(taskService.delete(taskId, AgamottoSecurity.currentUserId()));
+        String actorId = AgamottoSecurity.currentUserId();
+        TaskResponse deleted = taskMapper.toResponse(taskService.delete(taskId, actorId));
+        projectEventPublisher.publishTaskChanged(task.getProject().getId(), actorId);
+        return deleted;
     }
 
     @GetMapping({"/projects/{projectId}/tasks/{taskId}/history", "/tasks/{taskId}/history"})
     public List<TaskHistoryResponse> history(
             @PathVariable(required = false) String projectId,
             @PathVariable String taskId) {
-        requireOwnedTask(projectId, taskId);
+        requireAccessibleTask(projectId, taskId, false);
         return taskService.historyForTask(taskId).stream()
                 .map(taskMapper::toHistoryResponse)
                 .toList();
@@ -141,13 +160,19 @@ public class TaskController {
                 request.status()));
     }
 
-    private Task requireOwnedTask(String projectId, String taskId) {
+    private Task requireAccessibleTask(String projectId, String taskId, boolean edit) {
         Task task = taskService.getById(taskId);
-        if (projectId != null && !projectId.equals(task.getProject().getId())) {
+        String resolvedProjectId = task.getProject().getId();
+        if (projectId != null && !projectId.equals(resolvedProjectId)) {
             throw new com.srikrishnanethi.agamotto.exception.ResourceNotFoundException(
                     "Task not found in project: " + taskId);
         }
-        AgamottoSecurity.requireOwner(task);
+        String userId = AgamottoSecurity.currentUserId();
+        if (edit) {
+            projectAccessService.requireEdit(userId, resolvedProjectId);
+        } else {
+            projectAccessService.requireView(userId, resolvedProjectId);
+        }
         return task;
     }
 }
