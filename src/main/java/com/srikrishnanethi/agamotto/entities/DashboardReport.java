@@ -36,7 +36,7 @@ public class DashboardReport extends BaseEntity {
     @Column(name = "period_start", nullable = false)
     private LocalDate periodStart;
 
-    @Comment("Inclusive end date of the window (usually 'as of')")
+    @Comment("Inclusive end date of the window (usually the as-of date)")
     @Column(name = "period_end", nullable = false)
     private LocalDate periodEnd;
 

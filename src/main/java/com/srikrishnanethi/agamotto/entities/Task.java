@@ -50,7 +50,7 @@ public class Task extends BaseEntity {
     @Column(nullable = false)
     private LocalDateTime deadline;
 
-    @Comment("Owner's duration estimate in hours")
+    @Comment("Owner duration estimate in hours")
     @Column(name = "estimated_duration_hours", nullable = false)
     private double estimatedDurationHours;
 
