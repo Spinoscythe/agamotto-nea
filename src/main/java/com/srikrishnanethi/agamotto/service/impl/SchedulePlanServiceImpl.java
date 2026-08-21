@@ -1,12 +1,20 @@
 package com.srikrishnanethi.agamotto.service.impl;
 
-import com.srikrishnanethi.agamotto.entities.*;
+import com.srikrishnanethi.agamotto.entities.Project;
+import com.srikrishnanethi.agamotto.entities.ScheduleBlock;
+import com.srikrishnanethi.agamotto.entities.SchedulePlan;
+import com.srikrishnanethi.agamotto.entities.Task;
+import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.PlanStatus;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.exception.ScheduleConflictException;
-import com.srikrishnanethi.agamotto.repositories.*;
+import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
+import com.srikrishnanethi.agamotto.repositories.ScheduleBlockRepository;
+import com.srikrishnanethi.agamotto.repositories.SchedulePlanRepository;
+import com.srikrishnanethi.agamotto.repositories.TaskRepository;
+import com.srikrishnanethi.agamotto.repositories.UserProfileRepository;
 import com.srikrishnanethi.agamotto.service.NotificationService;
 import com.srikrishnanethi.agamotto.service.SchedulePlanService;
 import com.srikrishnanethi.agamotto.service.scheduler.GeneratedSchedule;

@@ -1,11 +1,15 @@
 package com.srikrishnanethi.agamotto.entities.enums;
 
 /**
- * Audit action recorded in task history (NEA R2.6 / R2.7).
+ * Audit action stored in {@code task_history.change_type}.
  */
 public enum ChangeType {
-	CREATED,
-	EDITED,
-	STATUS_CHANGED,
-	DELETED
+    /** First insert of the task row. */
+    CREATED,
+    /** Field edits other than status. */
+    EDITED,
+    /** Status moved between PENDING / IN_PROGRESS / COMPLETED / CANCELLED. */
+    STATUS_CHANGED,
+    /** Soft-delete / remove recorded in history. */
+    DELETED
 }

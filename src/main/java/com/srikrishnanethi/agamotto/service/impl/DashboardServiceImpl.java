@@ -8,7 +8,11 @@ import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.ReportPeriod;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
-import com.srikrishnanethi.agamotto.repositories.*;
+import com.srikrishnanethi.agamotto.repositories.DashboardReportRepository;
+import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
+import com.srikrishnanethi.agamotto.repositories.ScheduleBlockRepository;
+import com.srikrishnanethi.agamotto.repositories.TaskRepository;
+import com.srikrishnanethi.agamotto.repositories.UserRepository;
 import com.srikrishnanethi.agamotto.service.DashboardService;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -19,7 +23,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 @Service
 public class DashboardServiceImpl implements DashboardService {
@@ -144,16 +147,5 @@ public class DashboardServiceImpl implements DashboardService {
         DashboardReport saved = dashboardReportRepository.save(report);
         Hibernate.initialize(saved.getUser());
         return saved;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Optional<DashboardReport> latestReport(String userId, ReportPeriod period) {
-        return this.dashboardReportRepository.findFirstByUserIdAndPeriodOrderByGeneratedAtDesc(userId, period);
-    }
-
-    @Override
-    public List<DashboardReport> listReports(String userId, ReportPeriod period) {
-        return this.dashboardReportRepository.findByUserIdAndPeriodOrderByGeneratedAtDesc(userId, period);
     }
 }

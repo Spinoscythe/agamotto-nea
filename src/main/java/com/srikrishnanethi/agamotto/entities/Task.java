@@ -10,56 +10,68 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Comment;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Work item that the scheduler places into blocks. Maps to table {@code tasks}.
+ */
 @Entity
 @Table(name = "tasks")
+@Comment("Work items belonging to a project, with deadline, effort, and status")
 public class Task extends BaseEntity {
 
+    @Comment("Parent project (FK projects.id)")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
+    @Comment("Short task name")
     @Column(nullable = false, length = 200)
     private String title;
 
+    @Comment("Optional details or project-type note")
     @Column(length = 2000)
     private String description;
 
+    @Comment("Free-text category such as work or revision")
     @Column(nullable = false, length = 100)
     private String category;
 
+    @Comment("Importance 1-5; higher is placed sooner")
     @Column(nullable = false)
     private int priority;
 
+    @Comment("When the task must be finished")
     @Column(nullable = false)
     private LocalDateTime deadline;
 
+    @Comment("Owner's duration estimate in hours")
     @Column(name = "estimated_duration_hours", nullable = false)
     private double estimatedDurationHours;
 
-    /**
-     * Optional adaptive correction of duration estimates (NEA "correction factors").
-     * Null means no correction has been applied yet.
-     */
+    @Comment("Optional corrected duration after the user adjusts an estimate; null if unused")
     @Column(name = "corrected_duration_hours")
     private Double correctedDurationHours;
 
-    /** Cognitive difficulty used for Serenity session splitting. */
+    @Comment("Cognitive difficulty 1-5; used to split Serenity sessions")
     @Column(nullable = false)
     private int complexity;
 
+    @Comment("Lifecycle: PENDING, IN_PROGRESS, COMPLETED, CANCELLED")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private TaskStatus status = TaskStatus.PENDING;
 
+    @Comment("When the task row was inserted")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    @Comment("When title, status, or estimates last changed")
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 

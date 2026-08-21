@@ -4,7 +4,6 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.repl
   ?? 'http://localhost:8080'
 
 export const SESSION_STORAGE_KEY = 'agamotto.session'
-export const TOKEN_STORAGE_KEY = 'agamotto.session'
 
 export class ApiError extends Error {
   readonly status: number
@@ -40,7 +39,6 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url
 }
 
-// read the jwt from the saved session in localStorage
 export function getAccessToken(): string | null {
   const raw = localStorage.getItem(SESSION_STORAGE_KEY)
   if (raw == null || raw === '') {
@@ -55,10 +53,6 @@ export function getAccessToken(): string | null {
   } catch (e) {
     return null
   }
-}
-
-export function setAccessToken(_token: string | null): void {
-  // not used anymore - token is saved with the whole session
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {

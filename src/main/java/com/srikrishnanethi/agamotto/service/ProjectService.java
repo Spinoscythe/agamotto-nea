@@ -16,8 +16,6 @@ public interface ProjectService {
 
     Project getById(String projectId);
 
-    List<Project> listByOwner(String ownerId);
-
     List<Project> listAccessible(String userId);
 
     Project update(

@@ -97,14 +97,6 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Project> listByOwner(String ownerId) {
-        List<Project> projects = this.projectRepository.findByOwnerId(ownerId);
-        projects.forEach(ProjectServiceImpl::initializeOwner);
-        return projects;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<Project> listAccessible(String userId) {
         Map<String, Project> unique = new LinkedHashMap<>();
         for (Project project : this.projectRepository.findByOwnerId(userId)) {

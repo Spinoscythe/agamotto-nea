@@ -1,10 +1,13 @@
 package com.srikrishnanethi.agamotto.entities.enums;
 
 /**
- * Lifecycle of a generated schedule plan.
+ * Plan lifecycle stored in {@code schedule_plans.status}.
  */
 public enum PlanStatus {
-	DRAFT,
-	ACTIVE,
-	ARCHIVED
+    /** Unused placeholder; generation writes ACTIVE. */
+    DRAFT,
+    /** Current timetable for the project. */
+    ACTIVE,
+    /** Replaced by a newer generation. */
+    ARCHIVED
 }

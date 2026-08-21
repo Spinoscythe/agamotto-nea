@@ -9,35 +9,46 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Comment;
 
 import java.time.LocalDateTime;
 
+/**
+ * One placement decision for a task on a plan. Maps to table {@code schedule_blocks}.
+ */
 @Entity
 @Table(name = "schedule_blocks")
+@Comment("Individual scheduled, delayed, or excluded slot produced by the engine")
 public class ScheduleBlock extends BaseEntity {
 
+    @Comment("Parent plan (FK schedule_plans.id)")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "schedule_id", nullable = false)
     private SchedulePlan schedule;
 
+    @Comment("Task this slot is about (FK tasks.id)")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "task_id", nullable = false)
     private Task task;
 
+    @Comment("Slot start; null when DELAYED or EXCLUDED")
     @Column(name = "start_time")
     private LocalDateTime startTime;
 
+    @Comment("Slot end; null when DELAYED or EXCLUDED")
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    @Comment("SCHEDULED, DELAYED, or EXCLUDED")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private BlockDecision decision;
-//
-    /** Human-readable explanation for the scheduling decision (R5). */
+
+    @Comment("Why the engine (or a later override) chose this decision")
     @Column(nullable = false, length = 1000)
     private String reason;
 
+    @Comment("True after a user moved, delayed, or otherwise overrode the engine")
     @Column(name = "manually_overridden", nullable = false)
     private boolean manuallyOverridden = false;
 

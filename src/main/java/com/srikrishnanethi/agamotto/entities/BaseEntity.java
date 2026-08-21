@@ -4,17 +4,25 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
+import org.hibernate.annotations.Comment;
 
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * Shared primary-key mapping for every persisted Agamotto table.
+ * IDs are UUID strings stored as {@code CHAR(36)}.
+ */
 @MappedSuperclass
 public abstract class BaseEntity {
 
+    /** Surrogate primary key assigned on first persist. */
     @Id
+    @Comment("Primary key: UUID string (36 chars)")
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
+    /** Generates a random UUID when the row is first inserted. */
     @PrePersist
     protected void assignId() {
         if (id == null) {
@@ -35,7 +43,6 @@ public abstract class BaseEntity {
         if (this == obj) {
             return true;
         }
-
         if (!(obj instanceof BaseEntity that)) {
             return false;
         }
