@@ -4,6 +4,7 @@ import com.srikrishnanethi.agamotto.entities.Project;
 import com.srikrishnanethi.agamotto.entities.ScheduleBlock;
 import com.srikrishnanethi.agamotto.entities.SchedulePlan;
 import com.srikrishnanethi.agamotto.entities.Task;
+import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.PlanStatus;
