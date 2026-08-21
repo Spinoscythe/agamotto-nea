@@ -1,25 +1,42 @@
 package com.srikrishnanethi.agamotto.entities;
 
-import jakarta.persistence.*;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Comment;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Login account. Maps to table {@code users}; PK column is {@code user_id}.
+ */
 @Entity
 @Table(name = "users")
-@AttributeOverride(name = "id", column = @Column(name = "user_id", length = 36, nullable = false, updatable = false))
+@Comment("Registered accounts that can sign in and own or join projects")
+@AttributeOverride(
+        name = "id",
+        column = @Column(name = "user_id", length = 36, nullable = false, updatable = false))
 public class User extends BaseEntity {
 
+    @Comment("Display name shown in the UI and on invites")
     @Column(name = "full_name", nullable = false, length = 120)
     private String fullName;
 
+    @Comment("Unique login email, stored lower-case")
     @Column(name = "email", nullable = false, unique = true)
     private String email;
 
+    @Comment("BCrypt hash of the password; never store plaintext")
     @Column(name = "passwordHash", nullable = false)
     private String passwordHash;
 
+    @Comment("When this account row was created")
     @Column(name = "createdAt", nullable = false)
     private Instant createdAt = Instant.now();
 

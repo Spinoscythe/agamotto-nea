@@ -12,37 +12,49 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Comment;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * One generated timetable for a project. Maps to table {@code schedule_plans}.
+ */
 @Entity
 @Table(name = "schedule_plans")
+@Comment("Generated timetable header: mode, window, and explanation")
 public class SchedulePlan extends BaseEntity {
 
+    @Comment("Project this plan belongs to (FK projects.id)")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
+    @Comment("SERENITY if work fitted capacity, otherwise CRUNCH")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private ScheduleMode mode;
 
+    @Comment("DRAFT, ACTIVE, or ARCHIVED; generating a new plan archives the previous ACTIVE one")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private PlanStatus status = PlanStatus.DRAFT;
 
+    @Comment("First day of the placement window")
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
+    @Comment("Last day of the placement window")
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
+    @Comment("When the engine produced this plan")
     @Column(name = "generated_at", nullable = false)
     private Instant generatedAt = Instant.now();
 
+    @Comment("Short engine explanation shown in the UI")
     @Column(name = "explanation_summary", length = 1024)
     private String explanationSummary;
 

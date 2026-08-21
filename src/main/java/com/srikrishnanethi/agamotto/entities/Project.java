@@ -1,34 +1,53 @@
 package com.srikrishnanethi.agamotto.entities;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Comment;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A container for tasks and generated schedules. Maps to table {@code projects}.
+ */
 @Entity
 @Table(name = "projects")
+@Comment("Work container owned by one user and optionally shared with members")
 public class Project extends BaseEntity {
 
+    @Comment("Account that created and owns this project (FK users.user_id)")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User owner;
 
+    @Comment("Short project title shown in lists")
     @Column(nullable = false, length = 200)
     private String name;
 
+    @Comment("Optional longer description")
     @Column(length = 2000)
     private String description;
 
+    @Comment("Inclusive planned start date")
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
+
+    @Comment("Inclusive planned end date; must be on or after start_date")
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
+    @Comment("Rough total effort the owner expects, in hours")
     @Column(name = "estimated_effort_hours", nullable = false)
     private double estimatedEffortHours;
 
+    @Comment("When this project row was created")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

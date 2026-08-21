@@ -5,9 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { authApi, type UserResponse } from '@/api'
-
-const STORAGE_KEY = 'agamotto.session'
+import { authApi, SESSION_STORAGE_KEY, type UserResponse } from '@/api'
 
 export interface SessionUser {
   id: string
@@ -31,15 +29,15 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 // save user + token in localStorage so they stay logged in after refresh
 function saveSession(user: SessionUser) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user))
 }
 
 function clearSession() {
-  localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(SESSION_STORAGE_KEY)
 }
 
 function loadSession(): SessionUser | null {
-  const raw = localStorage.getItem(STORAGE_KEY)
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY)
   if (raw == null || raw === '') {
     return null
   }
@@ -55,8 +53,7 @@ function loadSession(): SessionUser | null {
       }
     }
     return null
-  } catch (e) {
-    // bad json in storage
+  } catch {
     return null
   }
 }
@@ -121,8 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveSession(session)
       setUser(session)
       return session
-    } catch (e) {
-      // if it fails just keep what we have
+    } catch {
       return user
     }
   }
@@ -146,13 +142,4 @@ export function useAuth() {
     throw new Error('useAuth must be used inside AuthProvider')
   }
   return ctx
-}
-
-// used by other files if they need the token
-export function getSavedToken(): string | null {
-  const saved = loadSession()
-  if (saved == null) {
-    return null
-  }
-  return saved.token
 }

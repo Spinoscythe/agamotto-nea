@@ -27,11 +27,7 @@ export * from './types'
 export {
   ApiError,
   api,
-  apiBaseUrl,
-  getAccessToken,
-  setAccessToken,
   SESSION_STORAGE_KEY,
-  TOKEN_STORAGE_KEY,
 } from './client'
 
 export const authApi = {
@@ -43,11 +39,6 @@ export const authApi = {
     api.get<UserResponse>(`/api/users/${userId}`),
   updateProfile: (userId: string, body: UpdateUserRequest) =>
     api.patch<UserResponse>(`/api/users/${userId}`, body),
-}
-
-export const usersApi = {
-  get: authApi.getUser,
-  update: authApi.updateProfile,
 }
 
 export const projectsApi = {

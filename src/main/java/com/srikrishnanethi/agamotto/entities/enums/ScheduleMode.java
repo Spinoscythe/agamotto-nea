@@ -1,9 +1,11 @@
 package com.srikrishnanethi.agamotto.entities.enums;
 
 /**
- * Scheduling engine mode: Serenity when workload fits capacity, Crunch when it overflows.
+ * Engine mode stored in {@code schedule_plans.mode}.
  */
 public enum ScheduleMode {
-	SERENITY,
-	CRUNCH
+    /** Workload fitted available hours; greedy placement, no exclusions. */
+    SERENITY,
+    /** Over capacity; best-fit drop then greedy place. */
+    CRUNCH
 }
