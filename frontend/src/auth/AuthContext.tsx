@@ -53,8 +53,7 @@ function loadSession(): SessionUser | null {
       }
     }
     return null
-  } catch (e) {
-    // bad json in storage
+  } catch {
     return null
   }
 }
@@ -119,8 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveSession(session)
       setUser(session)
       return session
-    } catch (e) {
-      // if it fails just keep what we have
+    } catch {
       return user
     }
   }

@@ -50,7 +50,7 @@ export function getAccessToken(): string | null {
       return data.token
     }
     return null
-  } catch (e) {
+  } catch {
     return null
   }
 }
@@ -80,7 +80,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-  } catch (e) {
+  } catch {
     throw new ApiError(0, 'Cannot reach API at ' + BASE_URL + '. Is the Spring Boot server running?')
   }
 
@@ -93,7 +93,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (text !== '') {
     try {
       parsed = JSON.parse(text)
-    } catch (e) {
+    } catch {
       throw new ApiError(response.status, 'Bad response from server')
     }
   }
