@@ -3,6 +3,9 @@ package com.srikrishnanethi.agamotto.service.impl;
 import com.srikrishnanethi.agamotto.entities.Project;
 import com.srikrishnanethi.agamotto.entities.Task;
 import com.srikrishnanethi.agamotto.exception.ConflictException;
+import com.srikrishnanethi.agamotto.repositories.NotificationRepository;
+import com.srikrishnanethi.agamotto.repositories.ProjectInviteRepository;
+import com.srikrishnanethi.agamotto.repositories.ProjectMemberRepository;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
 import com.srikrishnanethi.agamotto.repositories.SchedulePlanRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
@@ -33,13 +36,25 @@ class ProjectServiceImplTest {
 	private TaskRepository taskRepository;
 	@Mock
 	private SchedulePlanRepository schedulePlanRepository;
+	@Mock
+	private ProjectMemberRepository projectMemberRepository;
+	@Mock
+	private ProjectInviteRepository projectInviteRepository;
+	@Mock
+	private NotificationRepository notificationRepository;
 
 	private ProjectServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ProjectServiceImpl(
-				projectRepository, userRepository, taskRepository, schedulePlanRepository);
+				projectRepository,
+				userRepository,
+				taskRepository,
+				schedulePlanRepository,
+				projectMemberRepository,
+				projectInviteRepository,
+				notificationRepository);
 	}
 
 	@Test
@@ -79,6 +94,9 @@ class ProjectServiceImplTest {
 		when(schedulePlanRepository.existsByProjectId("p1")).thenReturn(false);
 
 		service.delete("p1");
+		verify(notificationRepository).deleteByProjectId("p1");
+		verify(projectInviteRepository).deleteByProjectId("p1");
+		verify(projectMemberRepository).deleteByProjectId("p1");
 		verify(projectRepository).delete(project);
 	}
 }

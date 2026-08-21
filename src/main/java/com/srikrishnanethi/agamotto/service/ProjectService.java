@@ -18,6 +18,8 @@ public interface ProjectService {
 
     List<Project> listByOwner(String ownerId);
 
+    List<Project> listAccessible(String userId);
+
     Project update(
             String projectId,
             String name,

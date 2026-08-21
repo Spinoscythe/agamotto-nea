@@ -5,6 +5,7 @@ import com.srikrishnanethi.agamotto.dto.request.UpdateProjectRequest;
 import com.srikrishnanethi.agamotto.dto.response.ProjectResponse;
 import com.srikrishnanethi.agamotto.mapper.ProjectMapper;
 import com.srikrishnanethi.agamotto.security.AgamottoSecurity;
+import com.srikrishnanethi.agamotto.service.ProjectAccessService;
 import com.srikrishnanethi.agamotto.service.ProjectService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -18,10 +19,15 @@ public class ProjectController {
 
     private final ProjectService projectService;
     private final ProjectMapper projectMapper;
+    private final ProjectAccessService projectAccessService;
 
-    public ProjectController(ProjectService projectService, ProjectMapper projectMapper) {
+    public ProjectController(
+            ProjectService projectService,
+            ProjectMapper projectMapper,
+            ProjectAccessService projectAccessService) {
         this.projectService = projectService;
         this.projectMapper = projectMapper;
+        this.projectAccessService = projectAccessService;
     }
 
     @PostMapping
@@ -41,19 +47,18 @@ public class ProjectController {
     public List<ProjectResponse> list(@RequestParam(required = false) String ownerId) {
         String me = AgamottoSecurity.currentUserId();
         AgamottoSecurity.requireSelf(ownerId);
-        return this.projectService.listByOwner(me).stream().map(projectMapper::toResponse).toList();
+        return this.projectService.listAccessible(me).stream().map(projectMapper::toResponse).toList();
     }
 
     @GetMapping("/{projectId}")
     public ProjectResponse get(@PathVariable String projectId) {
-        var project = this.projectService.getById(projectId);
-        AgamottoSecurity.requireOwner(project);
-        return this.projectMapper.toResponse(project);
+        projectAccessService.requireView(AgamottoSecurity.currentUserId(), projectId);
+        return this.projectMapper.toResponse(this.projectService.getById(projectId));
     }
 
     @PutMapping("/{projectId}")
     public ProjectResponse update(@PathVariable String projectId, @Valid @RequestBody UpdateProjectRequest request) {
-        AgamottoSecurity.requireOwner(this.projectService.getById(projectId));
+        projectAccessService.requireEdit(AgamottoSecurity.currentUserId(), projectId);
         return this.projectMapper.toResponse(this.projectService.update(projectId,
                 request.name(),
                 request.description(),
@@ -65,7 +70,7 @@ public class ProjectController {
     @DeleteMapping("/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String projectId) {
-        AgamottoSecurity.requireOwner(this.projectService.getById(projectId));
+        projectAccessService.requireOwner(AgamottoSecurity.currentUserId(), projectId);
         this.projectService.delete(projectId);
     }
 }

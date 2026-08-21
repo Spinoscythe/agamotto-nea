@@ -1,7 +1,10 @@
 package com.srikrishnanethi.agamotto.entities;
 
+import com.srikrishnanethi.agamotto.entities.enums.NotificationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -20,6 +23,18 @@ public class Notification extends BaseEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "task_id")
 	private Task task;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "project_id")
+	private Project project;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "invite_id")
+	private ProjectInvite invite;
+
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 30)
+	private NotificationType type = NotificationType.GENERAL;
 
 	@Column(nullable = false, length = 500)
 	private String message;
@@ -47,6 +62,30 @@ public class Notification extends BaseEntity {
 
 	public void setTask(Task task) {
 		this.task = task;
+	}
+
+	public Project getProject() {
+		return project;
+	}
+
+	public void setProject(Project project) {
+		this.project = project;
+	}
+
+	public ProjectInvite getInvite() {
+		return invite;
+	}
+
+	public void setInvite(ProjectInvite invite) {
+		this.invite = invite;
+	}
+
+	public NotificationType getType() {
+		return type;
+	}
+
+	public void setType(NotificationType type) {
+		this.type = type;
 	}
 
 	public String getMessage() {

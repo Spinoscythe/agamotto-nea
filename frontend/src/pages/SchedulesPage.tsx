@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DotsThreeIcon, PlusIcon } from '@phosphor-icons/react'
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
 import { PageHeader } from '@/components/PageHeader'
+import { ProjectSharePanel } from '@/components/ProjectSharePanel'
 import { ScheduleWeekPreview } from '@/components/ScheduleWeekPreview'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +69,10 @@ export function SchedulesPage() {
     return toDateInputValue(d)
   })
   const [effortHours, setEffortHours] = useState(40)
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  )
 
   useEffect(() => {
     if (!user) return
@@ -136,7 +141,7 @@ export function SchedulesPage() {
     }
   }, [selectedProjectId, setSearchParams])
 
-  async function createProject(e: React.SubmitEvent) {
+  async function createProject(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!user || creatingRef.current) return
     if (!projectName.trim()) {
@@ -363,12 +368,14 @@ export function SchedulesPage() {
                       >
                         Add tasks & generate
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => void deleteProject(p.id)}
-                      >
-                        Delete project
-                      </DropdownMenuItem>
+                      {user?.id === p.ownerId ? (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => void deleteProject(p.id)}
+                        >
+                          Delete project
+                        </DropdownMenuItem>
+                      ) : null}
                       <DropdownMenuItem render={<Link to="/settings" />}>
                         Edit preferences
                       </DropdownMenuItem>
@@ -394,6 +401,16 @@ export function SchedulesPage() {
             </Button>
           </EmptyContent>
         </Empty>
+      ) : null}
+
+      {selectedProject ? (
+        <ProjectSharePanel
+          project={selectedProject}
+          onLeft={() => {
+            setProjects((prev) => prev.filter((p) => p.id !== selectedProject.id))
+            setSelectedProjectId('')
+          }}
+        />
       ) : null}
 
       {selectedProjectId && plans.length > 1 ? (

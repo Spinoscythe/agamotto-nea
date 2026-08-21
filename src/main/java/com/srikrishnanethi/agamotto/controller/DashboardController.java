@@ -5,7 +5,7 @@ import com.srikrishnanethi.agamotto.entities.enums.ReportPeriod;
 import com.srikrishnanethi.agamotto.mapper.DashboardMapper;
 import com.srikrishnanethi.agamotto.security.AgamottoSecurity;
 import com.srikrishnanethi.agamotto.service.DashboardService;
-import com.srikrishnanethi.agamotto.service.ProjectService;
+import com.srikrishnanethi.agamotto.service.ProjectAccessService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -15,15 +15,15 @@ import java.time.LocalDate;
 public class DashboardController {
     private final DashboardService dashboardService;
     private final DashboardMapper dashboardMapper;
-    private final ProjectService projectService;
+    private final ProjectAccessService projectAccessService;
 
     public DashboardController(
             DashboardService dashboardService,
             DashboardMapper dashboardMapper,
-            ProjectService projectService) {
+            ProjectAccessService projectAccessService) {
         this.dashboardService = dashboardService;
         this.dashboardMapper = dashboardMapper;
-        this.projectService = projectService;
+        this.projectAccessService = projectAccessService;
     }
 
     @GetMapping("/dashboard")
@@ -41,7 +41,7 @@ public class DashboardController {
             @PathVariable String projectId,
             @RequestParam ReportPeriod period,
             @RequestParam(required = false) LocalDate asOf) {
-        AgamottoSecurity.requireOwner(projectService.getById(projectId));
+        projectAccessService.requireView(AgamottoSecurity.currentUserId(), projectId);
         LocalDate end = asOf != null ? asOf : LocalDate.now();
         return dashboardMapper.toResponse(
                 dashboardService.generateReportForProject(projectId, period, end));

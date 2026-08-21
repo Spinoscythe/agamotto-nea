@@ -6,6 +6,9 @@ export type PlanStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type BlockDecision = 'SCHEDULED' | 'DELAYED' | 'EXCLUDED'
 export type ReportPeriod = 'DAILY' | 'WEEKLY' | 'MONTHLY'
 export type ChangeType = 'CREATED' | 'EDITED' | 'DELETED' | 'STATUS_CHANGED'
+export type ProjectRole = 'OWNER' | 'EDITOR' | 'VIEWER'
+export type InviteStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED'
+export type NotificationType = 'GENERAL' | 'DEADLINE' | 'SCHEDULE' | 'PROJECT_INVITE'
 
 export interface UserProfileResponse {
   id: string
@@ -99,10 +102,36 @@ export interface NotificationResponse {
   id: string
   userId: string
   taskId: string | null
+  projectId: string | null
+  inviteId: string | null
+  type: NotificationType | null
   message: string
   createdAt: string
   sentAt: string | null
   read: boolean
+}
+
+export interface ProjectMemberResponse {
+  id: string
+  projectId: string
+  userId: string
+  email: string
+  fullName: string
+  role: ProjectRole
+  joinedAt: string
+}
+
+export interface ProjectInviteResponse {
+  id: string
+  projectId: string
+  projectName: string
+  inviterId: string
+  inviterName: string
+  inviteeEmail: string
+  role: ProjectRole
+  status: InviteStatus
+  createdAt: string
+  resolvedAt: string | null
 }
 
 export interface RescheduleResponse {
