@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
  * Create-task payload. {@code deadline} must be in the future (NEA T14 → HTTP 400).
  */
 public record CreateTaskRequest(
-		@NotBlank String actorUserId,
+		String actorUserId,
 		@NotBlank @Size(max = 200) String title,
 		@Size(max = 2000) String description,
 		@NotBlank @Size(max = 100) String category,

@@ -6,6 +6,8 @@ import com.srikrishnanethi.agamotto.dto.response.TaskHistoryResponse;
 import com.srikrishnanethi.agamotto.dto.response.TaskResponse;
 import com.srikrishnanethi.agamotto.entities.Task;
 import com.srikrishnanethi.agamotto.mapper.TaskMapper;
+import com.srikrishnanethi.agamotto.security.AgamottoSecurity;
+import com.srikrishnanethi.agamotto.service.ProjectService;
 import com.srikrishnanethi.agamotto.service.TaskService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -33,10 +35,12 @@ public class TaskController {
 
     private final TaskService taskService;
     private final TaskMapper taskMapper;
+    private final ProjectService projectService;
 
-    public TaskController(TaskService taskService, TaskMapper taskMapper) {
+    public TaskController(TaskService taskService, TaskMapper taskMapper, ProjectService projectService) {
         this.taskService = taskService;
         this.taskMapper = taskMapper;
+        this.projectService = projectService;
     }
 
     @PostMapping("/projects/{projectId}/tasks")
@@ -44,9 +48,12 @@ public class TaskController {
     public TaskResponse create(
             @PathVariable String projectId,
             @Valid @RequestBody CreateTaskRequest request) {
+        String actorId = AgamottoSecurity.currentUserId();
+        AgamottoSecurity.requireSelf(request.actorUserId());
+        AgamottoSecurity.requireOwner(projectService.getById(projectId));
         return taskMapper.toResponse(taskService.create(
                 projectId,
-                request.actorUserId(),
+                actorId,
                 request.title(),
                 request.description(),
                 request.category(),
@@ -58,6 +65,7 @@ public class TaskController {
 
     @GetMapping("/projects/{projectId}/tasks")
     public List<TaskResponse> listByProject(@PathVariable String projectId) {
+        AgamottoSecurity.requireOwner(projectService.getById(projectId));
         return taskService.listByProject(projectId).stream()
                 .map(taskMapper::toResponse)
                 .toList();
@@ -67,7 +75,7 @@ public class TaskController {
     public TaskResponse get(
             @PathVariable(required = false) String projectId,
             @PathVariable String taskId) {
-        return taskMapper.toResponse(requireTaskInProject(projectId, taskId));
+        return taskMapper.toResponse(requireOwnedTask(projectId, taskId));
     }
 
     @PatchMapping("/projects/{projectId}/tasks/{taskId}")
@@ -75,7 +83,7 @@ public class TaskController {
             @PathVariable String projectId,
             @PathVariable String taskId,
             @Valid @RequestBody UpdateTaskRequest request) {
-        requireTaskInProject(projectId, taskId);
+        requireOwnedTask(projectId, taskId);
         return applyUpdate(taskId, request);
     }
 
@@ -83,6 +91,7 @@ public class TaskController {
     public TaskResponse updateFlat(
             @PathVariable String taskId,
             @Valid @RequestBody UpdateTaskRequest request) {
+        requireOwnedTask(null, taskId);
         return applyUpdate(taskId, request);
     }
 
@@ -90,32 +99,37 @@ public class TaskController {
     public TaskResponse deleteNested(
             @PathVariable String projectId,
             @PathVariable String taskId,
-            @RequestParam String actorUserId) {
-        requireTaskInProject(projectId, taskId);
-        return taskMapper.toResponse(taskService.delete(taskId, actorUserId));
+            @RequestParam(required = false) String actorUserId) {
+        requireOwnedTask(projectId, taskId);
+        AgamottoSecurity.requireSelf(actorUserId);
+        return taskMapper.toResponse(taskService.delete(taskId, AgamottoSecurity.currentUserId()));
     }
 
     @DeleteMapping("/tasks/{taskId}")
     public TaskResponse deleteFlat(
             @PathVariable String taskId,
-            @RequestParam String actorUserId) {
-        return taskMapper.toResponse(taskService.delete(taskId, actorUserId));
+            @RequestParam(required = false) String actorUserId) {
+        requireOwnedTask(null, taskId);
+        AgamottoSecurity.requireSelf(actorUserId);
+        return taskMapper.toResponse(taskService.delete(taskId, AgamottoSecurity.currentUserId()));
     }
 
     @GetMapping({"/projects/{projectId}/tasks/{taskId}/history", "/tasks/{taskId}/history"})
     public List<TaskHistoryResponse> history(
             @PathVariable(required = false) String projectId,
             @PathVariable String taskId) {
-        requireTaskInProject(projectId, taskId);
+        requireOwnedTask(projectId, taskId);
         return taskService.historyForTask(taskId).stream()
                 .map(taskMapper::toHistoryResponse)
                 .toList();
     }
 
     private TaskResponse applyUpdate(String taskId, UpdateTaskRequest request) {
+        String actorId = AgamottoSecurity.currentUserId();
+        AgamottoSecurity.requireSelf(request.actorUserId());
         return taskMapper.toResponse(taskService.update(
                 taskId,
-                request.actorUserId(),
+                actorId,
                 request.title(),
                 request.description(),
                 request.category(),
@@ -127,12 +141,13 @@ public class TaskController {
                 request.status()));
     }
 
-    private Task requireTaskInProject(String projectId, String taskId) {
-        var task = taskService.getById(taskId);
+    private Task requireOwnedTask(String projectId, String taskId) {
+        Task task = taskService.getById(taskId);
         if (projectId != null && !projectId.equals(task.getProject().getId())) {
             throw new com.srikrishnanethi.agamotto.exception.ResourceNotFoundException(
                     "Task not found in project: " + taskId);
         }
+        AgamottoSecurity.requireOwner(task);
         return task;
     }
 }

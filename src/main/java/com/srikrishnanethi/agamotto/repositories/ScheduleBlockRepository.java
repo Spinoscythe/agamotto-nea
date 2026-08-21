@@ -27,4 +27,16 @@ public interface ScheduleBlockRepository extends JpaRepository<ScheduleBlock, St
 			@Param("userId") String userId,
 			@Param("from") Instant from,
 			@Param("to") Instant to);
+
+	@Query("""
+			select b from ScheduleBlock b
+			join b.schedule s
+			where s.project.id = :projectId
+			  and s.generatedAt >= :from
+			  and s.generatedAt < :to
+			""")
+	List<ScheduleBlock> findByProjectIdAndPlanGeneratedAtBetween(
+			@Param("projectId") String projectId,
+			@Param("from") Instant from,
+			@Param("to") Instant to);
 }

@@ -92,9 +92,58 @@ public class DashboardServiceImpl implements DashboardService {
     @Override
     @Transactional
     public DashboardReport generateReportForProject(String projectId, ReportPeriod period, LocalDate asOf) {
+        Objects.requireNonNull(projectId, "projectId");
+        Objects.requireNonNull(period, "period");
+        Objects.requireNonNull(asOf, "asOf");
+
         Project project = this.projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + projectId));
-        return this.generateReportForUser(project.getOwner().getId(), period, asOf);
+        User owner = project.getOwner();
+        if (owner == null) {
+            throw new ResourceNotFoundException("Project owner not found: " + projectId);
+        }
+        Hibernate.initialize(owner);
+
+        LocalDate start = DashboardService.resolvePeriodStart(period, asOf);
+        Instant from = start.atStartOfDay().toInstant(ZoneOffset.UTC);
+        Instant to = asOf.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+
+        List<ScheduleBlock> blocks = this.scheduleBlockRepository
+                .findByProjectIdAndPlanGeneratedAtBetween(projectId, from, to);
+        int scheduled = 0;
+        int delayed = 0;
+        int excluded = 0;
+        for (ScheduleBlock block : blocks) {
+            BlockDecision decision = block.getDecision();
+            if (decision == BlockDecision.SCHEDULED) {
+                scheduled++;
+            }
+            else if (decision == BlockDecision.DELAYED) {
+                delayed++;
+            }
+            else if (decision == BlockDecision.EXCLUDED) {
+                excluded++;
+            }
+        }
+
+        int completed = taskRepository
+                .findByProjectIdAndStatusAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+                        projectId, TaskStatus.COMPLETED, from, to)
+                .size();
+
+        DashboardReport report = new DashboardReport();
+        report.setUser(owner);
+        report.setPeriod(period);
+        report.setPeriodStart(start);
+        report.setPeriodEnd(asOf);
+        report.setScheduledCount(scheduled);
+        report.setDelayedCount(delayed);
+        report.setExcludedCount(excluded);
+        report.setCompletedCount(completed);
+        report.setGeneratedAt(Instant.now());
+        DashboardReport saved = dashboardReportRepository.save(report);
+        Hibernate.initialize(saved.getUser());
+        return saved;
     }
 
     @Override

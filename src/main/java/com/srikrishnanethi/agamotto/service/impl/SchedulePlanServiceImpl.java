@@ -7,6 +7,7 @@ import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.exception.ScheduleConflictException;
 import com.srikrishnanethi.agamotto.repositories.*;
+import com.srikrishnanethi.agamotto.service.NotificationService;
 import com.srikrishnanethi.agamotto.service.SchedulePlanService;
 import com.srikrishnanethi.agamotto.service.scheduler.GeneratedSchedule;
 import com.srikrishnanethi.agamotto.service.scheduler.GreedyPlacer;
@@ -36,19 +37,22 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
     private final SchedulePlanRepository schedulePlanRepository;
     private final ScheduleBlockRepository scheduleBlockRepository;
     private final SchedulerEngine schedulerEngine;
+    private final NotificationService notificationService;
 
     public SchedulePlanServiceImpl(ProjectRepository projectRepository,
                                    TaskRepository taskRepository,
                                    UserProfileRepository userProfileRepository,
                                    SchedulePlanRepository schedulePlanRepository,
                                    ScheduleBlockRepository scheduleBlockRepository,
-                                   SchedulerEngine schedulerEngine) {
+                                   SchedulerEngine schedulerEngine,
+                                   NotificationService notificationService) {
         this.projectRepository = projectRepository;
         this.taskRepository = taskRepository;
         this.userProfileRepository = userProfileRepository;
         this.schedulePlanRepository = schedulePlanRepository;
         this.scheduleBlockRepository = scheduleBlockRepository;
         this.schedulerEngine = schedulerEngine;
+        this.notificationService = notificationService;
     }
 
 
@@ -92,6 +96,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
 
         SchedulePlan saved = schedulePlanRepository.save(plan);
         initializePlanGraph(saved);
+        notifyOwner(project, saved);
         return new GeneratedSchedule(saved, result.explanationSummary());
     }
 
@@ -208,6 +213,28 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
                         "Schedule conflict: block overlaps another SCHEDULED block on the same plan"
                                 + " (" + otherStart + " – " + otherEnd + ")");
             }
+        }
+    }
+
+    private void notifyOwner(Project project, SchedulePlan plan) {
+        User owner = project.getOwner();
+        if (owner == null) {
+            return;
+        }
+        String summary = plan.getExplanationSummary() == null ? "" : plan.getExplanationSummary();
+        notificationService.notifyUser(
+                owner,
+                null,
+                "Schedule generated in " + plan.getMode() + " mode. " + summary);
+        for (ScheduleBlock block : plan.getBlocks()) {
+            if (block.getDecision() != BlockDecision.EXCLUDED && block.getDecision() != BlockDecision.DELAYED) {
+                continue;
+            }
+            Task task = block.getTask();
+            String title = task == null || task.getTitle() == null ? "a task" : task.getTitle();
+            String reason = block.getReason() == null ? block.getDecision().name() : block.getReason();
+            notificationService.notifyUser(owner, task, "Task '" + title + "' was " +
+                    block.getDecision().name().toLowerCase() + ": " + reason);
         }
     }
 
