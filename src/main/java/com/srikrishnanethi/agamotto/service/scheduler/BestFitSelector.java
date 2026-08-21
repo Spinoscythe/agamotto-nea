@@ -63,6 +63,21 @@ public class BestFitSelector {
 				remaining.add(task);
 			}
 		}
+
+		// If every task was dropped but the window still has hours, keep the
+		// highest-priority excluded task so greedy can place a prefix (DELAYED rest).
+		if (remaining.isEmpty() && availableHours > EPSILON && !excluded.isEmpty()) {
+			Task restore = excluded.stream()
+					.max(Comparator.comparingInt(Task::getPriority)
+							.thenComparingDouble(scoringStrategy::effectiveDurationHours)
+							.thenComparing(t -> t.getId() == null ? "" : t.getId()))
+					.orElse(null);
+			if (restore != null) {
+				excluded.remove(restore);
+				remaining.add(restore);
+			}
+		}
+
 		return new BestFitResult(List.copyOf(remaining), List.copyOf(excluded));
 	}
 

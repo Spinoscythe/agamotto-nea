@@ -2,6 +2,8 @@ package com.srikrishnanethi.agamotto.service.impl;
 
 import com.srikrishnanethi.agamotto.entities.Project;
 import com.srikrishnanethi.agamotto.entities.Task;
+import com.srikrishnanethi.agamotto.entities.User;
+import com.srikrishnanethi.agamotto.entities.enums.ChangeType;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskHistoryRepository;
@@ -10,14 +12,18 @@ import com.srikrishnanethi.agamotto.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,5 +70,37 @@ class TaskServiceImplTest {
 	void historyUsesDerivedQueryNotNativeJoin() {
 		when(taskHistoryRepository.findByTaskIdOrderByChangedAtDesc("t1")).thenReturn(List.of());
 		assertEquals(0, service.historyForTask("t1").size());
+	}
+
+	@Test
+	void createWritesCreatedHistory() {
+		Project project = new Project();
+		project.setId("p1");
+		User actor = new User();
+		actor.setId("u1");
+		when(projectRepository.findById("p1")).thenReturn(Optional.of(project));
+		when(userRepository.findById("u1")).thenReturn(Optional.of(actor));
+		when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
+			Task task = invocation.getArgument(0);
+			task.setId("t1");
+			return task;
+		});
+
+		service.create(
+				"p1",
+				"u1",
+				"Essay",
+				null,
+				"work",
+				3,
+				LocalDateTime.now().plusDays(2),
+				2.0,
+				2);
+
+		ArgumentCaptor<com.srikrishnanethi.agamotto.entities.TaskHistory> captor =
+				ArgumentCaptor.forClass(com.srikrishnanethi.agamotto.entities.TaskHistory.class);
+		verify(taskHistoryRepository).save(captor.capture());
+		assertEquals(ChangeType.CREATED, captor.getValue().getChangeType());
+		assertEquals("u1", captor.getValue().getChangedBy().getId());
 	}
 }

@@ -125,6 +125,16 @@ class GlobalExceptionHandlerTest {
 		assertFalse(response.getBody().message().contains("Failed to convert"));
 	}
 
+	@Test
+	void forbiddenIs403WithoutStack() {
+		MockHttpServletRequest request = request("/api/users/other");
+		ResponseEntity<ErrorResponse> response = handler.handleForbidden(
+				new ForbiddenException("You cannot access another user's data"), request);
+		assertEquals(403, response.getStatusCode().value());
+		assertNotNull(response.getBody());
+		assertEquals("You cannot access another user's data", response.getBody().message());
+	}
+
 	private static MockHttpServletRequest request(String uri) {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.setRequestURI(uri);

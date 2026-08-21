@@ -7,7 +7,13 @@ import { cn } from '@/lib/utils'
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
-  if (loading) return null
+  if (loading) {
+    return (
+      <p className="p-6 text-sm text-muted-foreground" role="status">
+        Loading…
+      </p>
+    )
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return children
 }
@@ -15,6 +21,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 const primaryLinks = [
   { to: '/dashboard', label: 'Overview' },
   { to: '/projects', label: 'Projects' },
+  { to: '/generate', label: 'Generate' },
   { to: '/history', label: 'History' },
   { to: '/notifications', label: 'Notifications' },
 ]

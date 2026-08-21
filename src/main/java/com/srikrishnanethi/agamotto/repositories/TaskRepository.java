@@ -33,4 +33,10 @@ public interface TaskRepository extends JpaRepository<Task, String> {
 			TaskStatus status,
 			Instant updatedFrom,
 			Instant updatedTo);
+
+	List<Task> findByProjectIdAndStatusAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+			String projectId,
+			TaskStatus status,
+			Instant updatedFrom,
+			Instant updatedTo);
 }

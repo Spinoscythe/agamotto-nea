@@ -1,9 +1,10 @@
-import {type SubmitEvent, useEffect, useMemo, useRef, useState} from 'react'
+import {type FormEvent, useEffect, useMemo, useRef, useState} from 'react'
 import {Link, useSearchParams} from 'react-router-dom'
 import {TrashIcon} from '@phosphor-icons/react'
 import {
   ApiError,
   type ProjectResponse,
+  type ScheduleBlockResponse,
   projectsApi,
   type SchedulePlanResponse,
   schedulesApi,
@@ -66,6 +67,9 @@ export function GenerateSchedulePage() {
   const [result, setResult] = useState<SchedulePlanResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [moveStart, setMoveStart] = useState('')
+  const [moveEnd, setMoveEnd] = useState('')
+  const [movingBlockId, setMovingBlockId] = useState('')
   const projectIdRef = useRef(projectId)
   projectIdRef.current = projectId
 
@@ -124,7 +128,7 @@ export function GenerateSchedulePage() {
     if (end) setEndDate(end)
   }, [selectedProject])
 
-  async function addTask(e: SubmitEvent) {
+  async function addTask(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!user || !projectId) return
     const title = draft.title.trim()
@@ -193,7 +197,7 @@ export function GenerateSchedulePage() {
     }
   }
 
-  async function generate(e: SubmitEvent) {
+  async function generate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!projectId) return
     if (schedulableCount === 0) {
@@ -215,6 +219,53 @@ export function GenerateSchedulePage() {
       setResult(plan)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Schedule generation failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function replaceBlock(updated: ScheduleBlockResponse) {
+    setResult((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        blocks: (current.blocks ?? []).map((b) => (b.id === updated.id ? updated : b)),
+      }
+    })
+  }
+
+  async function rescheduleSelected() {
+    if (!movingBlockId || !moveStart || !moveEnd) {
+      setError('Choose a start and end time to reschedule.')
+      return
+    }
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await schedulesApi.rescheduleBlock(movingBlockId, {
+        startTime: toLocalDateTimePayload(moveStart),
+        endTime: toLocalDateTimePayload(moveEnd),
+        reason: 'Moved from Generate view',
+      })
+      if (response.movedBlock) replaceBlock(response.movedBlock)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reschedule block')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function delayBlock(blockId: string) {
+    setError(null)
+    setBusy(true)
+    try {
+      const updated = await schedulesApi.overrideBlock(blockId, {
+        decision: 'DELAYED',
+        reason: 'Manually delayed from Generate view',
+      })
+      replaceBlock(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not override block')
     } finally {
       setBusy(false)
     }
@@ -268,7 +319,9 @@ export function GenerateSchedulePage() {
                     }}
                   >
                     <SelectTrigger id="project" className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {selectedProject?.name ?? 'Select a project'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -444,6 +497,7 @@ export function GenerateSchedulePage() {
                 <Input
                   aria-label="Deadline"
                   type="datetime-local"
+                  min={toDateTimeLocalValue()}
                   value={draft.deadline}
                   onChange={(e) => setDraft({ ...draft, deadline: e.target.value })}
                   required
@@ -491,13 +545,14 @@ export function GenerateSchedulePage() {
                         <TableHead>Decision</TableHead>
                         <TableHead>Window</TableHead>
                         <TableHead>Reason</TableHead>
+                        <TableHead>Adjust</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {(result.blocks ?? []).length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={3}
+                            colSpan={4}
                             className="py-8 text-center text-muted-foreground"
                           >
                             No blocks were placed for this range.
@@ -515,12 +570,88 @@ export function GenerateSchedulePage() {
                             <TableCell className="max-w-xs text-muted-foreground">
                               {b.reason ?? '—'}
                             </TableCell>
+                            <TableCell>
+                              {b.decision === 'SCHEDULED' ? (
+                                <div className="flex flex-col gap-1">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setMovingBlockId(b.id)
+                                      setMoveStart(
+                                        b.startTime ? b.startTime.slice(0, 16) : toDateTimeLocalValue(),
+                                      )
+                                      setMoveEnd(
+                                        b.endTime ? b.endTime.slice(0, 16) : toDateTimeLocalValue(),
+                                      )
+                                    }}
+                                  >
+                                    Move
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={busy}
+                                    onClick={() => void delayBlock(b.id)}
+                                  >
+                                    Delay
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                           </TableRow>
                         ))
                       )}
                     </TableBody>
                   </Table>
                 </div>
+                {movingBlockId ? (
+                  <form
+                    className="mt-4 grid gap-2 rounded-md border p-3 sm:grid-cols-3"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void rescheduleSelected()
+                    }}
+                  >
+                    <Field>
+                      <FieldLabel htmlFor="moveStart">New start</FieldLabel>
+                      <Input
+                        id="moveStart"
+                        type="datetime-local"
+                        value={moveStart}
+                        onChange={(e) => setMoveStart(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="moveEnd">New end</FieldLabel>
+                      <Input
+                        id="moveEnd"
+                        type="datetime-local"
+                        value={moveEnd}
+                        onChange={(e) => setMoveEnd(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    <div className="flex items-end gap-2">
+                      <Button type="submit" disabled={busy}>
+                        Save move
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setMovingBlockId('')}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
               </CardContent>
               <CardFooter>
                 <Link

@@ -73,6 +73,8 @@ public class TaskServiceImpl implements TaskService {
         task.setCreatedAt(Instant.now());
         task.setUpdatedAt(Instant.now());
         task = this.taskRepository.save(task);
+        User actor = requireUser(userId);
+        writeHistory(task, actor, ChangeType.CREATED, "Created task '" + task.getTitle() + "'");
 
         initializeProject(task);
         return task;

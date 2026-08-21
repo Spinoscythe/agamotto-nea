@@ -5,7 +5,7 @@ export type ScheduleMode = 'SERENITY' | 'CRUNCH'
 export type PlanStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type BlockDecision = 'SCHEDULED' | 'DELAYED' | 'EXCLUDED'
 export type ReportPeriod = 'DAILY' | 'WEEKLY' | 'MONTHLY'
-export type ChangeType = 'CREATED' | 'UPDATED' | 'DELETED' | 'STATUS_CHANGED'
+export type ChangeType = 'CREATED' | 'EDITED' | 'DELETED' | 'STATUS_CHANGED'
 
 export interface UserProfileResponse {
   id: string

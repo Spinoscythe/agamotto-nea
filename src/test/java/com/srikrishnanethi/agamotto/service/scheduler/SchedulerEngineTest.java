@@ -95,6 +95,8 @@ class SchedulerEngineTest {
 		assertEquals(ScheduleMode.CRUNCH, result.mode());
 		assertFalse(result.blocks().isEmpty());
 		assertTrue(result.blocks().stream().anyMatch(b -> b.getDecision() == BlockDecision.EXCLUDED));
+		assertTrue(result.blocks().stream().anyMatch(b -> b.getDecision() == BlockDecision.SCHEDULED
+				|| b.getDecision() == BlockDecision.DELAYED));
 		assertNoZeroLengthScheduledBlocks(result);
 	}
 

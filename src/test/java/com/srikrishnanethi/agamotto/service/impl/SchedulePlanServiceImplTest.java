@@ -35,7 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +57,8 @@ class SchedulePlanServiceImplTest {
 	private ScheduleBlockRepository scheduleBlockRepository;
 	@Mock
 	private SchedulerEngine schedulerEngine;
+	@Mock
+	private com.srikrishnanethi.agamotto.service.NotificationService notificationService;
 
 	private SchedulePlanServiceImpl service;
 
@@ -66,7 +70,8 @@ class SchedulePlanServiceImplTest {
 				userProfileRepository,
 				schedulePlanRepository,
 				scheduleBlockRepository,
-				schedulerEngine);
+				schedulerEngine,
+				notificationService);
 	}
 
 	@Test
@@ -102,6 +107,7 @@ class SchedulePlanServiceImplTest {
 		assertEquals(generated.plan(), block.getSchedule());
 		assertEquals("summary", generated.explanationSummary());
 		assertEquals("summary", generated.plan().getExplanationSummary());
+		verify(notificationService).notifyUser(eq(owner), isNull(), contains("SERENITY"));
 	}
 
 	@Test
