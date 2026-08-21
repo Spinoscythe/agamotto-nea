@@ -36,6 +36,12 @@ import java.util.Objects;
 
 @Service
 public class SchedulePlanServiceImpl implements SchedulePlanService {
+    /**
+     * Bit-vector set of statuses the engine is allowed to place.
+     * {@link EnumSet} is a long-bitmask over {@link TaskStatus}, so {@code contains}
+     * is O(1) and the set cannot hold a non-status value (unlike {@code HashSet<String>}).
+     * COMPLETED / CANCELLED stay out so greedy never books finished work.
+     */
     private static final EnumSet<TaskStatus> SCHEDULABLE = EnumSet.of(
             TaskStatus.PENDING,
             TaskStatus.IN_PROGRESS);

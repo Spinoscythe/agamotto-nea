@@ -11,6 +11,10 @@ import java.util.Objects;
 /**
  * Task scoring for Serenity / Crunch placement:
  * {@code w_p·priority + w_u·urgency + w_ed·estDuration}.
+ *
+ * <p>No collection is used here on purpose: score is a scalar so the placer's
+ * {@code PriorityQueue} comparator can call this in O(1) field work per comparison
+ * (not a scan of other tasks).
  */
 @Component
 public class ScoringStrategy {

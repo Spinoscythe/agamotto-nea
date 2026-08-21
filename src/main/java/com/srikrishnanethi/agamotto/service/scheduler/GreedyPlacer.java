@@ -21,9 +21,24 @@ import java.util.PriorityQueue;
 /**
  * Day-by-day greedy placement used by Serenity and by Crunch survivors.
  *
- * <p>A {@link PriorityQueue} holds ready work ordered by score (highest first). That matters
- * here because a task may be only partly placed, put back on the queue, and later compete again
- * against other unfinished work — a one-off sort would not handle that.
+ * <h2>Why these data structures</h2>
+ * <ul>
+ *   <li>{@link PriorityQueue} (binary heap) — the ready set is not static. A task can be
+ *       only partly placed, {@code offer}ed back, and must then compete against whatever is
+ *       still unfinished. Heap {@code poll}/{@code offer} are O(log n). A one-off
+ *       {@code ArrayList.sort} would be wrong because the set of remaining tasks changes
+ *       after every chunk. A {@code TreeSet} was rejected: equal scores are allowed, and
+ *       the same task object is removed and re-inserted after its remaining hours change.</li>
+ *   <li>{@link IdentityHashMap} for remaining hours — {@code Task.equals}/{@code hashCode}
+ *       are id-based ({@code BaseEntity}). Unsaved tasks (and some Hibernate proxies) can
+ *       share a null id, so a normal {@code HashMap} would collide keys. Identity hashing
+ *       keys by reference so each queue entry keeps its own leftover hours.</li>
+ *   <li>{@link ArrayList} for the output blocks — we only append, in the order the calendar
+ *       is filled. The week UI walks that sequence; a linked list would add pointer overhead
+ *       for no benefit at NEA-sized n (tens of tasks, not millions).</li>
+ *   <li>{@link StringBuilder} for reason text — many fragments are appended per block;
+ *       concatenating with {@code +} would copy the growing string each time.</li>
+ * </ul>
  */
 @Component
 public class GreedyPlacer {
@@ -42,8 +57,8 @@ public class GreedyPlacer {
 	}
 
 	public List<ScheduleBlock> place(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+		// Append-only result list: calendar order is the insertion order.
 		List<ScheduleBlock> blocks = new ArrayList<>();
-		// Nothing to schedule.
 		if (tasks == null || tasks.isEmpty()) {
 			return blocks;
 		}
@@ -51,11 +66,11 @@ public class GreedyPlacer {
 		Objects.requireNonNull(end, "end");
 		Objects.requireNonNull(profile, "profile");
 
-		// Identity map: Task.equals is id-based, so unsaved/proxy instances must not collide.
+		// Remaining hours keyed by object identity (not Task.equals / id).
 		Map<Task, Double> remainingHours = new IdentityHashMap<>();
 		tasks.forEach(task -> remainingHours.put(task, scoringStrategy.effectiveDurationHours(task)));
 
-		// Highest score first; partially placed tasks are offered back into this queue.
+		// Dynamic priority queue: highest score first; re-offer after a partial place.
 		PriorityQueue<Task> queue = new PriorityQueue<>(taskPlacementComparator(profile, start));
 		queue.addAll(tasks);
 
@@ -152,6 +167,8 @@ public class GreedyPlacer {
 		}
 
 		// Anything still unplaced after the last day becomes DELAYED (kept, but no free slot).
+		// Walk the original input list (not the heap): fully placed tasks have already
+		// left the queue, so only this list can find leftover hours for DELAYED blocks.
 		for (Task task : tasks) {
 			double original = scoringStrategy.effectiveDurationHours(task);
 			double left = remainingHours.getOrDefault(task, 0.0);
@@ -177,6 +194,10 @@ public class GreedyPlacer {
 		return hours;
 	}
 
+	/**
+	 * Heap ordering: highest score first, then earliest deadline, then id so equal-score
+	 * tasks have a stable total order (PriorityQueue is otherwise not stable).
+	 */
 	private Comparator<Task> taskPlacementComparator(UserProfile profile, LocalDate asOf) {
 		return Comparator
 				.comparingDouble((Task t) -> scoringStrategy.scoreTask(t, profile, asOf)).reversed()
@@ -213,6 +234,7 @@ public class GreedyPlacer {
 			LocalDate day,
 			boolean split,
 			boolean complexitySplit) {
+		// Grow the explanation in one buffer; repeated String + would recopy each fragment.
 		StringBuilder sb = new StringBuilder();
 		sb.append("Scheduled on ").append(day)
 				.append(" for ").append(formatHours(placeHours)).append("h")

@@ -98,6 +98,9 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional(readOnly = true)
     public List<Project> listAccessible(String userId) {
+        // LinkedHashMap: O(1) de-dupe of owned ∪ member projects while keeping
+        // insertion order (owned first). HashMap would shuffle the Projects page;
+        // ArrayList + contains would be O(n²).
         Map<String, Project> unique = new LinkedHashMap<>();
         for (Project project : this.projectRepository.findByOwnerId(userId)) {
             unique.put(project.getId(), project);

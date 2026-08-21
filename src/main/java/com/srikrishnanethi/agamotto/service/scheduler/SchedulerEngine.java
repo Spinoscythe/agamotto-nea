@@ -22,6 +22,19 @@ import java.util.Objects;
  * <h2>Session splitting (Serenity / §2.10)</h2>
  * Tasks with {@code complexity >= HIGH_COMPLEXITY_THRESHOLD} are split into sessions of at most
  * {@value #MAX_HIGH_COMPLEXITY_SESSION_HOURS} hours.
+ *
+ * <h2>Why these data structures</h2>
+ * <ul>
+ *   <li>{@code ArrayList} copies before {@code sort} — the input {@code List} is often a
+ *       Hibernate-backed collection. Sorting it in place would mutate the persistence
+ *       context.</li>
+ *   <li>Crunch deadline list is an {@code ArrayList} so Timsort can produce a full ordered
+ *       snapshot for {@link BestFitSelector}. A {@code PriorityQueue} would only give
+ *       poll-order, not a random-access list.</li>
+ *   <li>{@code ArrayList} of blocks — greedy output is copied so EXCLUDED rows can be
+ *       appended without mutating the placer's list. {@link List#copyOf} then freezes
+ *       the result for persist.</li>
+ * </ul>
  */
 @Service
 public class SchedulerEngine {
@@ -94,6 +107,7 @@ public class SchedulerEngine {
 		validateProfile(profile);
 		validateTasks(tasks);
 
+		// Copy-then-sort: do not reorder the JPA list the service passed in.
 		List<Task> byDeadline = new ArrayList<>(tasks);
 		byDeadline.sort(Comparator
 				.comparing(Task::getDeadline)
@@ -106,6 +120,7 @@ public class SchedulerEngine {
 
 		BestFitResult fit = bestFit(byDeadline, available);
 
+		// Mutable copy of greedy output so EXCLUDED rows can be appended.
 		List<ScheduleBlock> blocks = new ArrayList<>(greedyPlacer.place(fit.remaining(), start, end, profile));
 		for (Task excluded : fit.excluded()) {
 			blocks.add(createBlock(

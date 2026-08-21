@@ -12,6 +12,20 @@ import java.util.Set;
 
 /**
  * Best-fit exclusion: drop lower-priority / shorter tasks until overflow is covered.
+ *
+ * <h2>Why these data structures</h2>
+ * <ul>
+ *   <li>{@code ArrayList} copy of the input — {@link List#sort} mutates in place. The engine
+ *       still needs the caller's list, so we copy first. ArrayList Timsort is O(n log n),
+ *       which is fine for a project's task list.</li>
+ *   <li>Two views of exclusions: an {@code ArrayList} (drop order, so we can restore the
+ *       highest-priority victim if we emptied the window) plus a {@code HashSet} for O(1)
+ *       {@code contains} when rebuilding remaining in original order. {@code ArrayList.contains}
+ *       would be O(n) per task (O(n²) overall). A {@code TreeSet} would need a comparator
+ *       and would not keep drop order.</li>
+ *   <li>{@link List#copyOf} on the result — an immutable snapshot so later placement cannot
+ *       mutate the selector's lists.</li>
+ * </ul>
  */
 @Component
 public class BestFitSelector {
@@ -36,9 +50,11 @@ public class BestFitSelector {
 
 		double overflow = sumEffectiveHours(tasks) - availableHours;
 		if (overflow <= EPSILON) {
+			// Immutable copy: caller must not see a live view of the JPA collection.
 			return new BestFitResult(List.copyOf(tasks), List.of());
 		}
 
+		// Mutable copy so sort does not reorder the engine's input list.
 		List<Task> candidates = new ArrayList<>(tasks);
 		candidates.sort(Comparator
 				.comparingInt(Task::getPriority)
@@ -46,6 +62,7 @@ public class BestFitSelector {
 				.thenComparing(t -> t.getId() == null ? "" : t.getId()));
 
 		List<Task> excluded = new ArrayList<>();
+		// O(1) membership while scanning the original list for survivors.
 		Set<Task> excludedSet = new HashSet<>();
 		double removedHours = 0.0;
 		for (Task task : candidates) {
@@ -57,6 +74,7 @@ public class BestFitSelector {
 			removedHours += scoringStrategy.effectiveDurationHours(task);
 		}
 
+		// Rebuild remaining in the caller's order (not the cheap-first sort order).
 		List<Task> remaining = new ArrayList<>();
 		for (Task task : tasks) {
 			if (!excludedSet.contains(task)) {
@@ -73,6 +91,7 @@ public class BestFitSelector {
 							.thenComparing(t -> t.getId() == null ? "" : t.getId()))
 					.orElse(null);
 			if (restore != null) {
+				// ArrayList.remove is O(n); n is the handful of dropped tasks, not a concern.
 				excluded.remove(restore);
 				remaining.add(restore);
 			}

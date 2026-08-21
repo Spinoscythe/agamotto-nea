@@ -8,6 +8,8 @@ import java.util.List;
 /**
  * In-memory output of the scheduling engine (not yet persisted).
  * Phase 3 attaches blocks to a {@code SchedulePlan} inside a transaction.
+ *
+ * <p>{@code blocks} is an immutable list so persist cannot reorder or drop engine decisions.
  */
 public record ScheduleResult(
 		ScheduleMode mode,
