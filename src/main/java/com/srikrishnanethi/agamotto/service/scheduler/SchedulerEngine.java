@@ -21,7 +21,7 @@ import java.util.Objects;
  *
  * <h2>Session splitting (Serenity / §2.10)</h2>
  * Tasks with {@code complexity >= HIGH_COMPLEXITY_THRESHOLD} are split into sessions of at most
- * {@value #MAX_HIGH_COMPLEXITY_SESSION_HOURS} hours.
+ * {@value #ScheduleBuilder.MAX_HIGH_COMPLEXITY_SESSION_HOURS} hours.
  *
  * <h2>Why these data structures</h2>
  * <ul>
@@ -39,8 +39,8 @@ import java.util.Objects;
 @Service
 public class SchedulerEngine {
 
-	public static final int HIGH_COMPLEXITY_THRESHOLD = GreedyPlacer.HIGH_COMPLEXITY_THRESHOLD;
-	public static final double MAX_HIGH_COMPLEXITY_SESSION_HOURS = GreedyPlacer.MAX_HIGH_COMPLEXITY_SESSION_HOURS;
+	public static final int HIGH_COMPLEXITY_THRESHOLD = ScheduleBuilder.HIGH_COMPLEXITY_THRESHOLD;
+	public static final double MAX_HIGH_COMPLEXITY_SESSION_HOURS = ScheduleBuilder.MAX_HIGH_COMPLEXITY_SESSION_HOURS;
 	/** Inclusive calendar-day cap so {@code LocalDate.MAX} / huge ranges cannot hang or throw. */
 	public static final int MAX_PLAN_DAYS = 366 * 2;
 
@@ -48,15 +48,19 @@ public class SchedulerEngine {
 
 	private final ScoringStrategy scoringStrategy;
 	private final BestFitSelector bestFitSelector;
-	private final GreedyPlacer greedyPlacer;
+	private final ScheduleBuilder scheduleBuilder;
 
 	public SchedulerEngine(
 			ScoringStrategy scoringStrategy,
 			BestFitSelector bestFitSelector,
-			GreedyPlacer greedyPlacer) {
+			ScheduleBuilder scheduleBuilder) {
 		this.scoringStrategy = scoringStrategy;
 		this.bestFitSelector = bestFitSelector;
-		this.greedyPlacer = greedyPlacer;
+		this.scheduleBuilder = scheduleBuilder;
+	}
+
+	public ScheduleBuilder getScheduleBuilder() {
+		return scheduleBuilder;
 	}
 
 	/** Serenity when total hours fit capacity; otherwise Crunch. */
@@ -88,7 +92,7 @@ public class SchedulerEngine {
 		validateProfile(profile);
 		validateTasks(tasks);
 
-		List<ScheduleBlock> blocks = greedyPlacer.place(tasks, start, end, profile);
+		List<ScheduleBlock> blocks = scheduleBuilder.buildSchedule(tasks, start, end, profile);
 		String summary = "Serenity mode: workload fits available hours ("
 				+ formatHours(sumEffectiveHours(tasks)) + "h <= "
 				+ formatHours(availableHours(start, end, profile)) + "h). "
@@ -121,7 +125,7 @@ public class SchedulerEngine {
 		BestFitResult fit = bestFit(byDeadline, available);
 
 		// Mutable copy of greedy output so EXCLUDED rows can be appended.
-		List<ScheduleBlock> blocks = new ArrayList<>(greedyPlacer.place(fit.remaining(), start, end, profile));
+		List<ScheduleBlock> blocks = new ArrayList<>(scheduleBuilder.buildSchedule(fit.remaining(), start, end, profile));
 		for (Task excluded : fit.excluded()) {
 			blocks.add(createBlock(
 					excluded,
@@ -161,7 +165,7 @@ public class SchedulerEngine {
 	}
 
 	public double effectiveDurationHours(Task task) {
-		return scoringStrategy.effectiveDurationHours(task);
+		return scoringStrategy.getEffectiveDurationHours(task);
 	}
 
 	public double deadlineUrgency(Task task, LocalDate asOf) {
@@ -169,7 +173,7 @@ public class SchedulerEngine {
 	}
 
 	public double workingHoursPerDay(UserProfile profile) {
-		return greedyPlacer.workingHoursPerDay(profile);
+		return scheduleBuilder.workingHoursPerDay(profile);
 	}
 
 	private static boolean isWeekend(LocalDate day) {
@@ -179,7 +183,7 @@ public class SchedulerEngine {
 	private double sumEffectiveHours(List<Task> tasks) {
 		double sum = 0.0;
 		for (Task task : tasks) {
-			sum += scoringStrategy.effectiveDurationHours(task);
+			sum += scoringStrategy.getEffectiveDurationHours(task);
 		}
 		return sum;
 	}
@@ -195,14 +199,14 @@ public class SchedulerEngine {
 		block.setStartTime(start);
 		block.setEndTime(end);
 		block.setDecision(decision);
-		block.setReason(GreedyPlacer.clampReason(reason));
+		block.setReason(ScheduleBuilder.clampReason(reason));
 		block.setManuallyOverridden(false);
 		return block;
 	}
 
 	private String buildExcludedReason(Task task, double availableHours, double totalHours) {
 		return "Excluded by best-fit: priority=" + task.getPriority()
-				+ ", duration=" + formatHours(scoringStrategy.effectiveDurationHours(task)) + "h"
+				+ ", duration=" + formatHours(scoringStrategy.getEffectiveDurationHours(task)) + "h"
 				+ ", deadline urgency relative to overflow"
 				+ " (total=" + formatHours(totalHours) + "h > available="
 				+ formatHours(availableHours) + "h). Lower priority / shorter tasks removed first.";
@@ -237,7 +241,7 @@ public class SchedulerEngine {
 	}
 
 	private void validateProfile(UserProfile profile) {
-		greedyPlacer.workingHoursPerDay(profile);
+		scheduleBuilder.workingHoursPerDay(profile);
 		if (!Double.isFinite(profile.getWeightPriority())
 				|| !Double.isFinite(profile.getWeightUrgency())
 				|| !Double.isFinite(profile.getWeightDuration())) {
@@ -255,7 +259,7 @@ public class SchedulerEngine {
 				throw new IllegalArgumentException("Task '" + taskLabel(task) + "' is missing a deadline");
 			}
 			try {
-				scoringStrategy.effectiveDurationHours(task);
+				scoringStrategy.getEffectiveDurationHours(task);
 			} catch (IllegalArgumentException ex) {
 				throw new IllegalArgumentException(
 						"Task '" + taskLabel(task) + "' has invalid duration: " + ex.getMessage(), ex);

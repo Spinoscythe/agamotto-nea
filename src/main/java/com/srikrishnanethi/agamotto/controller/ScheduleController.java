@@ -12,6 +12,7 @@ import com.srikrishnanethi.agamotto.security.AgamottoSecurity;
 import com.srikrishnanethi.agamotto.service.ProjectAccessService;
 import com.srikrishnanethi.agamotto.service.SchedulePlanService;
 import com.srikrishnanethi.agamotto.service.realtime.ProjectEventPublisher;
+import com.srikrishnanethi.agamotto.service.scheduler.RescheduleResult;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -116,6 +117,16 @@ public class ScheduleController {
 				request.reason()));
 		projectEventPublisher.publishScheduleChanged(projectId, AgamottoSecurity.currentUserId());
 		return response;
+	}
+
+	@PostMapping("/schedule-blocks/{blockId}/unattended")
+	public RescheduleResponse markUnattended(@PathVariable String blockId) {
+		var block = schedulePlanService.getBlockById(blockId);
+		String projectId = block.getSchedule().getProject().getId();
+		projectAccessService.requireEdit(AgamottoSecurity.currentUserId(), projectId);
+		var generated = schedulePlanService.markUnattendedAndRearrange(blockId);
+		projectEventPublisher.publishScheduleChanged(projectId, AgamottoSecurity.currentUserId());
+		return scheduleMapper.toRescheduleResponse(new RescheduleResult(null, generated));
 	}
 
 	private ScheduleBlockResponse applyOverride(String blockId, OverrideBlockRequest request) {

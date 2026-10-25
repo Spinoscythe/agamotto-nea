@@ -19,6 +19,7 @@ import type {
   ScheduleBlockResponse,
   SchedulePlanResponse,
   TaskResponse,
+  UpdateTaskRequest,
   UpdateUserRequest,
   UserResponse,
 } from './types'
@@ -28,6 +29,10 @@ export {
   ApiError,
   api,
   SESSION_STORAGE_KEY,
+  UNAUTHORIZED_EVENT,
+  isAccessTokenUsable,
+  normalizeAccessToken,
+  setSessionToken,
 } from './client'
 
 export const authApi = {
@@ -61,6 +66,8 @@ export const tasksApi = {
     api.get<TaskResponse>(`/api/tasks/${taskId}`),
   create: (projectId: string, body: CreateTaskRequest) =>
     api.post<TaskResponse>(`/api/projects/${projectId}/tasks`, body),
+  update: (taskId: string, body: UpdateTaskRequest) =>
+    api.patch<TaskResponse>(`/api/tasks/${taskId}`, body),
   remove: (taskId: string, actorUserId: string) =>
     api.delete<TaskResponse>(`/api/tasks/${taskId}`, { actorUserId }),
 }
@@ -76,6 +83,8 @@ export const schedulesApi = {
     api.patch<ScheduleBlockResponse>(`/api/schedule-blocks/${blockId}`, body),
   rescheduleBlock: (blockId: string, body: RescheduleBlockRequest) =>
     api.post<RescheduleResponse>(`/api/schedule-blocks/${blockId}/reschedule`, body),
+  markUnattended: (blockId: string) =>
+    api.post<RescheduleResponse>(`/api/schedule-blocks/${blockId}/unattended`),
 }
 
 export const dashboardApi = {

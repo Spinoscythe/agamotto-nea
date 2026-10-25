@@ -61,6 +61,9 @@ public class NotificationServiceImpl implements NotificationService {
 		Notification notification = new Notification();
 		notification.setUser(user);
 		notification.setTask(task);
+		if (task != null && task.getProject() != null) {
+			notification.setProject(task.getProject());
+		}
 		notification.setType(task == null ? NotificationType.SCHEDULE : NotificationType.GENERAL);
 		notification.setMessage(clampMessage(message));
 		notification.setRead(false);

@@ -5,7 +5,15 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { authApi, SESSION_STORAGE_KEY, type UserResponse } from '@/api'
+import {
+  authApi,
+  isAccessTokenUsable,
+  normalizeAccessToken,
+  SESSION_STORAGE_KEY,
+  setSessionToken,
+  UNAUTHORIZED_EVENT,
+  type UserResponse,
+} from '@/api'
 
 export interface SessionUser {
   id: string
@@ -25,15 +33,28 @@ interface AuthContextValue {
   refreshUser: () => Promise<SessionUser | null>
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+function createAuthContext() {
+  return createContext<AuthContextValue | null>(null)
+}
+
+// Reuse the same context object across Vite HMR so useAuth and AuthProvider
+// do not briefly disagree and throw "must be used inside AuthProvider".
+const AuthContext: ReturnType<typeof createAuthContext> =
+  import.meta.hot?.data.authContext ?? createAuthContext()
+
+if (import.meta.hot) {
+  import.meta.hot.data.authContext = AuthContext
+}
 
 // save user + token in localStorage so they stay logged in after refresh
 function saveSession(user: SessionUser) {
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user))
+  setSessionToken(user.token)
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_STORAGE_KEY)
+  setSessionToken(null)
 }
 
 function loadSession(): SessionUser | null {
@@ -43,15 +64,20 @@ function loadSession(): SessionUser | null {
   }
   try {
     const data = JSON.parse(raw)
-    if (data.id && data.email && data.token) {
-      return {
+    const token = normalizeAccessToken(data.token)
+    if (data.id && data.email && token && isAccessTokenUsable(token)) {
+      const session = {
         id: data.id,
         email: data.email,
         fullName: data.fullName || data.email,
         displayName: data.fullName || data.email,
-        token: data.token,
+        token: token,
       }
+      setSessionToken(token)
+      return session
     }
+    localStorage.removeItem(SESSION_STORAGE_KEY)
+    setSessionToken(null)
     return null
   } catch {
     return null
@@ -65,21 +91,20 @@ function userFromResponse(user: UserResponse, token: string): SessionUser {
     email: user.email,
     fullName: name,
     displayName: name,
-    token: token,
+    token: normalizeAccessToken(token) ?? token,
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SessionUser | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<SessionUser | null>(() => loadSession())
 
-  // on page load, check if we already have a saved session
   useEffect(() => {
-    const saved = loadSession()
-    if (saved != null) {
-      setUser(saved)
+    const onUnauthorized = () => {
+      clearSession()
+      setUser(null)
     }
-    setLoading(false)
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
 
   async function login(email: string, password: string) {
@@ -126,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     user: user,
     isAuthenticated: user != null,
-    loading: loading,
+    loading: false,
     login: login,
     register: register,
     logout: logout,

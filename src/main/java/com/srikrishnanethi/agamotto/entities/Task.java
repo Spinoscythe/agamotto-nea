@@ -81,6 +81,11 @@ public class Task extends BaseEntity {
     @OneToMany(mappedBy = "task")
     private List<TaskHistory> history = new ArrayList<>();
 
+    @Comment("Assigned member (FK users.user_id); null if unassigned")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignee_id")
+    private User assignee;
+
     public Project getProject() {
         return project;
     }
@@ -191,5 +196,13 @@ public class Task extends BaseEntity {
 
     public void setHistory(List<TaskHistory> history) {
         this.history = history;
+    }
+
+    public User getAssignee() {
+        return assignee;
+    }
+
+    public void setAssignee(User assignee) {
+        this.assignee = assignee;
     }
 }

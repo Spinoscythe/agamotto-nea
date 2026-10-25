@@ -4,6 +4,46 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.repl
   ?? 'http://localhost:8080'
 
 export const SESSION_STORAGE_KEY = 'agamotto.session'
+export const UNAUTHORIZED_EVENT = 'agamotto:unauthorized'
+
+let memoryAccessToken: string | null = null
+
+export function setSessionToken(token: string | null) {
+  memoryAccessToken = normalizeAccessToken(token)
+}
+
+export function normalizeAccessToken(token: unknown): string | null {
+  if (typeof token !== 'string') {
+    return null
+  }
+  let value = token.trim()
+  if (value.toLowerCase().startsWith('bearer ')) {
+    value = value.slice('bearer '.length).trim()
+  }
+  if (value === '' || value.split('.').length !== 3) {
+    return null
+  }
+  return value
+}
+
+export function isAccessTokenUsable(token: unknown): boolean {
+  const value = normalizeAccessToken(token)
+  if (value == null) {
+    return false
+  }
+  try {
+    const payloadPart = value.split('.')[1]
+    const padded = payloadPart.replace(/-/g, '+').replace(/_/g, '/')
+    const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4))
+    const payload = JSON.parse(atob(padded + pad)) as { exp?: number }
+    if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now() + 5000) {
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
 
 export class ApiError extends Error {
   readonly status: number
@@ -40,14 +80,19 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 }
 
 export function getAccessToken(): string | null {
+  if (memoryAccessToken != null) {
+    return memoryAccessToken
+  }
   const raw = localStorage.getItem(SESSION_STORAGE_KEY)
   if (raw == null || raw === '') {
     return null
   }
   try {
-    const data = JSON.parse(raw)
-    if (data.token) {
-      return data.token
+    const data = JSON.parse(raw) as { token?: unknown }
+    const token = normalizeAccessToken(data.token)
+    if (token != null && isAccessTokenUsable(token)) {
+      memoryAccessToken = token
+      return token
     }
     return null
   } catch {
@@ -99,6 +144,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/auth/')) {
+      memoryAccessToken = null
+      localStorage.removeItem(SESSION_STORAGE_KEY)
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    }
     throw new ApiError(response.status, messageFromErrorBody(parsed, response.status), parsed)
   }
 

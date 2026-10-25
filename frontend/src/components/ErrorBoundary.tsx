@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -6,7 +6,22 @@ import { cn } from '@/lib/utils'
 
 export function ErrorBoundary({ children }: { children: ReactNode }) {
   const location = useLocation()
-  return <ErrorBoundaryInner resetKey={location.key}>{children}</ErrorBoundaryInner>
+  const [hotGeneration, setHotGeneration] = useState(0)
+
+  useEffect(() => {
+    if (!import.meta.hot) return
+    const onUpdate = () => setHotGeneration((value) => value + 1)
+    import.meta.hot.on('vite:afterUpdate', onUpdate)
+    return () => {
+      import.meta.hot?.off('vite:afterUpdate', onUpdate)
+    }
+  }, [])
+
+  return (
+    <ErrorBoundaryInner resetKey={location.key + ':' + String(hotGeneration)}>
+      {children}
+    </ErrorBoundaryInner>
+  )
 }
 
 class ErrorBoundaryInner extends Component<

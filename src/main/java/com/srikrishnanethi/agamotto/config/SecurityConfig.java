@@ -44,7 +44,7 @@ public class SecurityConfig {
 	}
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	SecurityFilterChain securityFilterChain(HttpSecurity http) {
 		http
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(Customizer.withDefaults())
@@ -81,13 +81,13 @@ public class SecurityConfig {
 	}
 
 	private AuthenticationEntryPoint jsonAuthenticationEntryPoint() {
-		return (request, response, authException) ->
+		return (request, response, _) ->
 				writeJson(response, request, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized",
 						"Authentication required");
 	}
 
 	private AccessDeniedHandler jsonAccessDeniedHandler() {
-		return (request, response, accessDeniedException) ->
+		return (request, response, _) ->
 				writeJson(response, request, HttpServletResponse.SC_FORBIDDEN, "Forbidden",
 						"You do not have access to this resource");
 	}

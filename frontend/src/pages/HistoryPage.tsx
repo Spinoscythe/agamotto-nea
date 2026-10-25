@@ -9,6 +9,7 @@ import {
 } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
 import { PageHeader } from '@/components/PageHeader'
+import { StatusBadge } from '@/components/StatusBadge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
@@ -109,7 +110,7 @@ export function HistoryPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-medium">{projectName}</p>
                         <Badge variant="secondary">{plan.mode}</Badge>
-                        <Badge variant="outline">{plan.status}</Badge>
+                        <StatusBadge status={plan.status} />
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {plan.startDate} to {plan.endDate} · {plan.blocks?.length ?? 0}{' '}

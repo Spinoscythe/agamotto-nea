@@ -38,7 +38,7 @@ public class ScoringStrategy {
 		Objects.requireNonNull(asOf, "asOf");
 
 		double urgency = deadlineUrgency(task, asOf);
-		double duration = effectiveDurationHours(task);
+		double duration = getEffectiveDurationHours(task);
 		return (profile.getWeightPriority() * task.getPriority())
 				+ (profile.getWeightUrgency() * urgency)
 				+ (profile.getWeightDuration() * duration);
@@ -57,7 +57,7 @@ public class ScoringStrategy {
 		return 1.0 / daysUntil;
 	}
 
-	public double effectiveDurationHours(Task task) {
+	public double getEffectiveDurationHours(Task task) {
 		Objects.requireNonNull(task, "task");
 		Double corrected = task.getCorrectedDurationHours();
 		double hours = corrected != null ? corrected : task.getEstimatedDurationHours();

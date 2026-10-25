@@ -60,6 +60,9 @@ export interface TaskResponse {
   status: TaskStatus
   createdAt: string
   updatedAt: string
+  assigneeId?: string | null
+  assigneeName?: string | null
+  assigneeEmail?: string | null
 }
 
 export interface ScheduleBlockResponse {
@@ -187,6 +190,21 @@ export interface CreateTaskRequest {
   deadline: string
   estimatedDurationHours: number
   complexity: number
+  assigneeId?: string | null
+}
+
+export interface UpdateTaskRequest {
+  actorUserId?: string
+  title?: string
+  description?: string
+  category?: string
+  priority?: number
+  deadline?: string
+  estimatedDurationHours?: number
+  correctedDurationHours?: number
+  complexity?: number
+  status?: TaskStatus
+  assigneeId?: string | null
 }
 
 export interface GenerateScheduleRequest {

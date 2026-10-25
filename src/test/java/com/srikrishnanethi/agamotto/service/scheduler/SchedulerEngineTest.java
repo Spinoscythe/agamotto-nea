@@ -23,11 +23,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SchedulerEngineTest {
 
 	private SchedulerEngine engine;
+	private ScheduleBuilder scheduleBuilder;
 
 	@BeforeEach
 	void setUp() {
 		ScoringStrategy scoring = new ScoringStrategy();
-		engine = new SchedulerEngine(scoring, new BestFitSelector(scoring), new GreedyPlacer(scoring));
+		scheduleBuilder = new ScheduleBuilder(scoring);
+		engine = new SchedulerEngine(scoring, new BestFitSelector(scoring), scheduleBuilder);
 	}
 
 	@Test
@@ -117,10 +119,33 @@ class SchedulerEngineTest {
 		assertTrue(scheduled.size() >= 2);
 		for (ScheduleBlock block : scheduled) {
 			double hours = minutesBetween(block) / 60.0;
-			assertTrue(hours <= GreedyPlacer.MAX_HIGH_COMPLEXITY_SESSION_HOURS + 1e-6,
+			assertTrue(hours <= ScheduleBuilder.MAX_HIGH_COMPLEXITY_SESSION_HOURS + 1e-6,
 					"high-complexity session exceeded cap: " + hours);
 		}
 		assertNoZeroLengthScheduledBlocks(result);
+	}
+
+	@Test
+	void tenHourMathBlockAcrossFiveDaysIsPacedSensiblyAndNotRequeuedToday() {
+		UserProfile profile = weekdayNineToFive();
+		LocalDate start = LocalDate.of(2026, 8, 10); // Monday
+		LocalDate end = LocalDate.of(2026, 8, 14); // Friday (5 working days)
+		Task maths = task("t-maths", "10 Hour Maths Block", 4, hoursFrom(start, 4, 17), 10.0, 5); // 10h, complexity 5 (2h cap)
+
+		ScheduleResult result = engine.generate(List.of(maths), start, end, profile);
+
+		List<ScheduleBlock> scheduled = result.blocks().stream()
+				.filter(b -> b.getDecision() == BlockDecision.SCHEDULED)
+				.toList();
+
+		// Paced at 2h/day across 5 days: 5 sessions scheduled on 5 distinct days
+		assertEquals(5, scheduled.size());
+		for (int i = 0; i < 5; i++) {
+			ScheduleBlock block = scheduled.get(i);
+			assertEquals(start.plusDays(i), block.getStartTime().toLocalDate());
+			double sessionHours = minutesBetween(block) / 60.0;
+			assertEquals(2.0, sessionHours, 1e-6);
+		}
 	}
 
 	@Test
@@ -377,15 +402,15 @@ class SchedulerEngineTest {
 
 		for (ScheduleBlock block : result.blocks()) {
 			assertNotNull(block.getReason());
-			assertTrue(block.getReason().length() <= GreedyPlacer.MAX_REASON_LENGTH,
+			assertTrue(block.getReason().length() <= ScheduleBuilder.MAX_REASON_LENGTH,
 					"reason length " + block.getReason().length());
 		}
 	}
 
 	@Test
 	void clampReasonTruncatesToEntityLength() {
-		String clamped = GreedyPlacer.clampReason("x".repeat(1500));
-		assertEquals(GreedyPlacer.MAX_REASON_LENGTH, clamped.length());
+		String clamped = ScheduleBuilder.clampReason("x".repeat(1500));
+		assertEquals(ScheduleBuilder.MAX_REASON_LENGTH, clamped.length());
 		assertTrue(clamped.endsWith("..."));
 	}
 
@@ -461,5 +486,112 @@ class SchedulerEngineTest {
 
 	private static long minutesBetween(ScheduleBlock block) {
 		return java.time.Duration.between(block.getStartTime(), block.getEndTime()).toMinutes();
+	}
+
+	@Test
+	void rearrangingAfterUnattendedSessionApproachingDeadlineShowsErrorMessageCantDoAnythingAnymore() {
+		UserProfile profile = weekdayNineToFive(); // 09:00 - 17:00 (8h/day)
+		LocalDate start = LocalDate.of(2026, 8, 10); // Monday
+		LocalDate end = LocalDate.of(2026, 8, 14); // Friday
+
+		// Task with deadline on Wednesday Aug 12 at 11:00 AM. Total duration = 4h.
+		Task task = task("t1", "Critical Coursework", 4, LocalDateTime.of(2026, 8, 12, 11, 0), 4.0, 3);
+
+		// Prior completed session: Monday Aug 10, 09:00 - 10:00 (1h completed)
+		ScheduleBlock completed = new ScheduleBlock();
+		completed.setId("b-past");
+		completed.setTask(task);
+		completed.setStartTime(LocalDateTime.of(2026, 8, 10, 9, 0));
+		completed.setEndTime(LocalDateTime.of(2026, 8, 10, 10, 0));
+		completed.setDecision(BlockDecision.SCHEDULED);
+
+		// Unattended session: Tuesday Aug 11, 09:00 - 17:00 (user was absent all day)
+		ScheduleBlock missed = new ScheduleBlock();
+		missed.setId("b-unattended");
+		missed.setTask(task);
+		missed.setStartTime(LocalDateTime.of(2026, 8, 11, 9, 0));
+		missed.setEndTime(LocalDateTime.of(2026, 8, 11, 17, 0));
+		missed.setDecision(BlockDecision.SCHEDULED);
+
+		List<ScheduleBlock> existing = List.of(completed, missed);
+
+		// Rearrange starting from the end of the unattended session (Tuesday 17:00)
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(existing, missed, end, profile);
+
+		// Resumption moves to Wednesday Aug 12 (deadline day!).
+		// Available before deadline (09:00 - 11:00) is only 2 hours.
+		// Remaining required work was 3 hours (4h total - 1h completed on Monday).
+		// So 2 hours are placed on Wednesday morning, leaving 1 hour unplaced.
+		// The 1 hour CANNOT be deferred past the deadline!
+		// It must be marked DELAYED with the error message showing you can't do anything anymore.
+		assertTrue(scheduleBuilder.hasDeadlineApproachedError(result));
+
+		ScheduleBlock delayedBlock = result.stream()
+				.filter(b -> b.getDecision() == BlockDecision.DELAYED)
+				.findFirst()
+				.orElseThrow();
+
+		assertNotNull(delayedBlock.getReason());
+		assertTrue(delayedBlock.getReason().contains("Delayed: Error: Rearranging schedule after unattended session approached the day of the deadline (2026-08-12)"),
+				delayedBlock.getReason());
+		assertTrue(delayedBlock.getReason().contains("you can't do anything anymore"),
+				delayedBlock.getReason());
+
+		// Verify validateNoDeadlineApproachedError throws the expected IllegalStateException
+		IllegalStateException ex = assertThrows(IllegalStateException.class,
+				() -> scheduleBuilder.validateNoDeadlineApproachedError(result));
+		assertTrue(ex.getMessage().contains("you can't do anything anymore"));
+	}
+
+	@Test
+	void rearrangingAfterUnattendedSessionWhenMissedSessionEndsPastDeadlineShowsErrorMessage() {
+		UserProfile profile = weekdayNineToFive();
+		LocalDate start = LocalDate.of(2026, 8, 10);
+		LocalDate end = LocalDate.of(2026, 8, 14);
+
+		// Task deadline was Tuesday Aug 11 at 12:00
+		Task task = task("t1", "Past Deadline Task", 3, LocalDateTime.of(2026, 8, 11, 12, 0), 2.0, 2);
+
+		// Unattended session ended at 17:00 on Tuesday Aug 11 (after deadline of 12:00)
+		ScheduleBlock missed = new ScheduleBlock();
+		missed.setId("b-missed");
+		missed.setTask(task);
+		missed.setStartTime(LocalDateTime.of(2026, 8, 11, 9, 0));
+		missed.setEndTime(LocalDateTime.of(2026, 8, 11, 17, 0));
+		missed.setDecision(BlockDecision.SCHEDULED);
+
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile);
+
+		assertTrue(scheduleBuilder.hasDeadlineApproachedError(result));
+		ScheduleBlock delayed = result.stream()
+				.filter(b -> b.getDecision() == BlockDecision.DELAYED)
+				.findFirst()
+				.orElseThrow();
+
+		assertTrue(delayed.getReason().contains("The deadline has already arrived or passed; you can't do anything anymore."));
+	}
+
+	@Test
+	void rearrangingAfterUnattendedSessionWithAmpleTimeReschedulesWithoutDeadlineError() {
+		UserProfile profile = weekdayNineToFive();
+		LocalDate start = LocalDate.of(2026, 8, 10);
+		LocalDate end = LocalDate.of(2026, 8, 21); // 2 weeks window
+
+		// Task deadline is next week (Aug 20)
+		Task task = task("t1", "Future Task", 3, LocalDateTime.of(2026, 8, 20, 17, 0), 2.0, 2);
+
+		// Missed session on Monday Aug 10, 09:00 - 11:00
+		ScheduleBlock missed = new ScheduleBlock();
+		missed.setId("b-missed-early");
+		missed.setTask(task);
+		missed.setStartTime(LocalDateTime.of(2026, 8, 10, 9, 0));
+		missed.setEndTime(LocalDateTime.of(2026, 8, 10, 11, 0));
+		missed.setDecision(BlockDecision.SCHEDULED);
+
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile);
+
+		// Should successfully reschedule without deadline-approached error
+		assertFalse(scheduleBuilder.hasDeadlineApproachedError(result));
+		assertFalse(result.stream().anyMatch(b -> b.getDecision() == BlockDecision.DELAYED));
 	}
 }

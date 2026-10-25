@@ -31,4 +31,6 @@ public interface SchedulePlanService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             String reason);
+
+    GeneratedSchedule markUnattendedAndRearrange(String blockId);
 }

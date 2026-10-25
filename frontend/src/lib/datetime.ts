@@ -29,9 +29,10 @@ export function eachDateInclusive(startDate: string, endDate: string, maxDays = 
   return list.length > 0 ? list : [startDate]
 }
 
-/** Pad `datetime-local` to `yyyy-MM-ddTHH:mm:ss` for Jackson LocalDateTime. */
+/** Pad date or `datetime-local` to `yyyy-MM-ddTHH:mm:ss` for Jackson LocalDateTime. */
 export function toLocalDateTimePayload(value: string): string {
   const trimmed = value.trim()
+  if (trimmed.length === 10) return `${trimmed}T23:59:59`
   if (trimmed.length === 16) return `${trimmed}:00`
   if (trimmed.length === 19) return trimmed
   if (trimmed.length > 19) return trimmed.slice(0, 19)

@@ -22,5 +22,18 @@ public record CreateTaskRequest(
 		@Min(1) @Max(5) int priority,
 		@NotNull @Future LocalDateTime deadline,
 		@Positive @DecimalMax("1000") double estimatedDurationHours,
-		@Min(1) @Max(5) int complexity) {
+		@Min(1) @Max(5) int complexity,
+		String assigneeId) {
+
+	public CreateTaskRequest(
+			String actorUserId,
+			String title,
+			String description,
+			String category,
+			int priority,
+			LocalDateTime deadline,
+			double estimatedDurationHours,
+			int complexity) {
+		this(actorUserId, title, description, category, priority, deadline, estimatedDurationHours, complexity, null);
+	}
 }

@@ -37,25 +37,4 @@ public final class AgamottoSecurity {
 			throw new ForbiddenException("You cannot access this project");
 		}
 	}
-
-	public static void requireOwner(Task task) {
-		if (task == null || task.getProject() == null) {
-			throw new ForbiddenException("You cannot access this task");
-		}
-		requireOwner(task.getProject());
-	}
-
-	public static void requireOwner(SchedulePlan plan) {
-		if (plan == null || plan.getProject() == null) {
-			throw new ForbiddenException("You cannot access this schedule");
-		}
-		requireOwner(plan.getProject());
-	}
-
-	public static void requireOwner(ScheduleBlock block) {
-		if (block == null || block.getSchedule() == null) {
-			throw new ForbiddenException("You cannot access this schedule block");
-		}
-		requireOwner(block.getSchedule());
-	}
 }

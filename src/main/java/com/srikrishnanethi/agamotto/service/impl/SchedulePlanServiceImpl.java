@@ -8,6 +8,7 @@ import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.PlanStatus;
+import com.srikrishnanethi.agamotto.entities.enums.ScheduleMode;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.exception.ScheduleConflictException;
@@ -18,12 +19,12 @@ import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserProfileRepository;
 import com.srikrishnanethi.agamotto.service.NotificationService;
 import com.srikrishnanethi.agamotto.service.SchedulePlanService;
-import com.srikrishnanethi.agamotto.service.scheduler.GeneratedSchedule;
-import com.srikrishnanethi.agamotto.service.scheduler.GreedyPlacer;
-import com.srikrishnanethi.agamotto.service.scheduler.RescheduleResult;
-import com.srikrishnanethi.agamotto.service.scheduler.ScheduleResult;
-import com.srikrishnanethi.agamotto.service.scheduler.SchedulerEngine;
+import com.srikrishnanethi.agamotto.service.scheduler.*;
+import com.srikrishnanethi.agamotto.entities.ProjectMember;
+import com.srikrishnanethi.agamotto.repositories.ProjectMemberRepository;
+import com.srikrishnanethi.agamotto.service.scheduler.group.GroupScheduleBuilder;
 import org.hibernate.Hibernate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +32,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -52,7 +55,10 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
     private final SchedulePlanRepository schedulePlanRepository;
     private final ScheduleBlockRepository scheduleBlockRepository;
     private final SchedulerEngine schedulerEngine;
+    private final ScheduleBuilder scheduleBuilder;
     private final NotificationService notificationService;
+    private final GroupScheduleBuilder groupScheduleBuilder;
+    private final ProjectMemberRepository projectMemberRepository;
 
     public SchedulePlanServiceImpl(ProjectRepository projectRepository,
                                    TaskRepository taskRepository,
@@ -61,6 +67,50 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
                                    ScheduleBlockRepository scheduleBlockRepository,
                                    SchedulerEngine schedulerEngine,
                                    NotificationService notificationService) {
+        this(projectRepository,
+                taskRepository,
+                userProfileRepository,
+                schedulePlanRepository,
+                scheduleBlockRepository,
+                schedulerEngine,
+                notificationService,
+                null,
+                null,
+                null);
+    }
+
+    public SchedulePlanServiceImpl(ProjectRepository projectRepository,
+                                   TaskRepository taskRepository,
+                                   UserProfileRepository userProfileRepository,
+                                   SchedulePlanRepository schedulePlanRepository,
+                                   ScheduleBlockRepository scheduleBlockRepository,
+                                   SchedulerEngine schedulerEngine,
+                                   NotificationService notificationService,
+                                   GroupScheduleBuilder groupScheduleBuilder,
+                                   ProjectMemberRepository projectMemberRepository) {
+        this(projectRepository,
+                taskRepository,
+                userProfileRepository,
+                schedulePlanRepository,
+                scheduleBlockRepository,
+                schedulerEngine,
+                notificationService,
+                groupScheduleBuilder,
+                projectMemberRepository,
+                null);
+    }
+
+    @Autowired
+    public SchedulePlanServiceImpl(ProjectRepository projectRepository,
+                                   TaskRepository taskRepository,
+                                   UserProfileRepository userProfileRepository,
+                                   SchedulePlanRepository schedulePlanRepository,
+                                   ScheduleBlockRepository scheduleBlockRepository,
+                                   SchedulerEngine schedulerEngine,
+                                   NotificationService notificationService,
+                                   @Autowired(required = false) GroupScheduleBuilder groupScheduleBuilder,
+                                   @Autowired(required = false) ProjectMemberRepository projectMemberRepository,
+                                   @Autowired(required = false) ScheduleBuilder scheduleBuilder) {
         this.projectRepository = projectRepository;
         this.taskRepository = taskRepository;
         this.userProfileRepository = userProfileRepository;
@@ -68,6 +118,11 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
         this.scheduleBlockRepository = scheduleBlockRepository;
         this.schedulerEngine = schedulerEngine;
         this.notificationService = notificationService;
+        this.groupScheduleBuilder = groupScheduleBuilder;
+        this.projectMemberRepository = projectMemberRepository;
+        this.scheduleBuilder = scheduleBuilder != null
+                ? scheduleBuilder
+                : (schedulerEngine != null ? schedulerEngine.getScheduleBuilder() : null);
     }
 
 
@@ -82,6 +137,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
             throw new IllegalArgumentException("endDate must be on or after startDate");
         }
 
+        // Project admin (creator) profile used for default availability
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + projectId));
 
@@ -90,8 +146,35 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "UserProfile not found for project owner: " + ownerId));
 
+        // Load tasks and eagerly initialize assignees designated by the admin
         List<Task> tasks = this.taskRepository.findByProjectIdAndStatusIn(projectId, SCHEDULABLE);
-        ScheduleResult result = schedulerEngine.generate(tasks, startDate, endDate, profile);
+        tasks.forEach(t -> {
+            if (t.getAssignee() != null) {
+                Hibernate.initialize(t.getAssignee());
+            }
+        });
+
+        List<ProjectMember> members = projectMemberRepository != null
+                ? projectMemberRepository.findByProjectIdOrderByJoinedAtAsc(projectId)
+                : List.of();
+
+        ScheduleResult result;
+        if (members.size() > 1 && groupScheduleBuilder != null) {
+            // Group project: schedule tasks onto assigned member timetables
+            Map<User, UserProfile> teamProfiles = new LinkedHashMap<>();
+            for (ProjectMember m : members) {
+                User u = m.getUser();
+                UserProfile p = userProfileRepository.findByUserId(u.getId()).orElse(profile);
+                teamProfiles.put(u, p);
+            }
+            List<ScheduleBlock> blocks = groupScheduleBuilder.buildSchedule(tasks, startDate, endDate, teamProfiles);
+            String summary = "Group schedule: workload scheduled across " + members.size()
+                    + " team members based on admin assignments.";
+            result = new ScheduleResult(ScheduleMode.SERENITY, summary, List.copyOf(blocks));
+        } else {
+            // Solo project: all tasks scheduled for the owner
+            result = schedulerEngine.generate(tasks, startDate, endDate, profile);
+        }
 
         archiveActivePlans(projectId);
 
@@ -111,7 +194,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
 
         SchedulePlan saved = schedulePlanRepository.save(plan);
         initializePlanGraph(saved);
-        notifyOwner(project, saved);
+        notifyOwner(project, saved, members.size() > 1);
         return new GeneratedSchedule(saved, result.explanationSummary());
     }
 
@@ -160,7 +243,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
             block.setDecision(decision);
         }
         if (reason != null && !reason.isBlank()) {
-            block.setReason(GreedyPlacer.clampReason(reason.trim()));
+            block.setReason(ScheduleBuilder.clampReason(reason.trim()));
         }
 
         LocalDateTime start = block.getStartTime();
@@ -175,7 +258,7 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
 
         block.setManuallyOverridden(true);
         if (block.getReason() == null || block.getReason().isBlank()) {
-            block.setReason(GreedyPlacer.clampReason("Manually overridden by user"));
+            block.setReason(ScheduleBuilder.clampReason("Manually overridden by user"));
         }
         ScheduleBlock saved = scheduleBlockRepository.save(block);
         initializeBlockGraph(saved);
@@ -201,15 +284,70 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
         block.setDecision(BlockDecision.SCHEDULED);
         block.setManuallyOverridden(true);
         block.setReason(reason != null && !reason.isBlank()
-                ? GreedyPlacer.clampReason(reason.trim())
+                ? ScheduleBuilder.clampReason(reason.trim())
                 : "Rescheduled by user to " + startTime + " – " + endTime);
         ScheduleBlock saved = scheduleBlockRepository.save(block);
         initializeBlockGraph(saved);
         return new RescheduleResult(saved, null);
     }
 
+    @Override
+    @Transactional
+    public GeneratedSchedule markUnattendedAndRearrange(String blockId) {
+        ScheduleBlock targetBlock = getBlockById(blockId);
+        SchedulePlan plan = targetBlock.getSchedule();
+        if (plan == null) {
+            throw new ResourceNotFoundException("Schedule block is not associated with a plan: " + blockId);
+        }
+        Project project = plan.getProject();
+        String ownerId = project.getOwner().getId();
+        UserProfile profile = userProfileRepository.findByUserId(ownerId)
+                .orElseThrow(() -> new ResourceNotFoundException("UserProfile not found for project owner: " + ownerId));
+
+        List<ScheduleBlock> existingBlocks = scheduleBlockRepository.findByScheduleIdOrderByStartTime(plan.getId());
+        if (scheduleBuilder == null) {
+            throw new IllegalStateException("ScheduleBuilder is not available");
+        }
+
+        List<ScheduleBlock> rearranged = scheduleBuilder.rearrangeForUnattendedSession(
+                existingBlocks, targetBlock, plan.getEndDate(), profile);
+
+        // Delete previous blocks for this plan and set new rearranged blocks
+        scheduleBlockRepository.deleteAll(existingBlocks);
+        scheduleBlockRepository.flush();
+
+        plan.getBlocks().clear();
+        for (ScheduleBlock b : rearranged) {
+            b.setSchedule(plan);
+            plan.getBlocks().add(b);
+        }
+        plan.setGeneratedAt(Instant.now());
+
+        boolean hasError = scheduleBuilder.hasDeadlineApproachedError(rearranged);
+        if (hasError) {
+            ScheduleBlock errorBlock = rearranged.stream()
+                    .filter(b -> b.getDecision() == BlockDecision.DELAYED && b.getReason() != null && b.getReason().contains(ScheduleBuilder.DEADLINE_APPROACHED_ERROR_KEY))
+                    .findFirst()
+                    .orElse(null);
+            String errorMsg = errorBlock != null ? errorBlock.getReason() : "Rearranging schedule after unattended session approached the day of the deadline; you can't do anything anymore.";
+            plan.setExplanationSummary(errorMsg);
+        } else {
+            plan.setExplanationSummary("Schedule rearranged after unattended session.");
+        }
+
+        SchedulePlan saved = schedulePlanRepository.save(plan);
+        initializePlanGraph(saved);
+        notifyOwner(project, saved, false);
+
+        return new GeneratedSchedule(saved, saved.getExplanationSummary());
+    }
+
     private void assertNoScheduledOverlap(ScheduleBlock moving, LocalDateTime start, LocalDateTime end) {
         String planId = moving.getSchedule().getId();
+        String movingUserId = null;
+        if (moving.getTask() != null && moving.getTask().getAssignee() != null) {
+            movingUserId = moving.getTask().getAssignee().getId();
+        }
         List<ScheduleBlock> siblings = scheduleBlockRepository.findByScheduleIdOrderByStartTime(planId);
         for (ScheduleBlock other : siblings) {
             if (other.getId() != null && other.getId().equals(moving.getId())) {
@@ -218,6 +356,11 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
             if (other.getDecision() != BlockDecision.SCHEDULED) {
                 continue;
             }
+            String otherUserId = null;
+            if (other.getTask() != null && other.getTask().getAssignee() != null) {
+                otherUserId = other.getTask().getAssignee().getId();
+            }
+            if (movingUserId != null && otherUserId != null && !movingUserId.equals(otherUserId)) continue;
             LocalDateTime otherStart = other.getStartTime();
             LocalDateTime otherEnd = other.getEndTime();
             if (otherStart == null || otherEnd == null) {
@@ -231,16 +374,24 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
         }
     }
 
-    private void notifyOwner(Project project, SchedulePlan plan) {
+    private void notifyOwner(Project project, SchedulePlan plan, boolean isGroup) {
         User owner = project.getOwner();
         if (owner == null) {
             return;
         }
-        String summary = plan.getExplanationSummary() == null ? "" : plan.getExplanationSummary();
-        notificationService.notifyUser(
-                owner,
-                null,
-                "Schedule generated in " + plan.getMode() + " mode. " + summary);
+        if (isGroup) {
+            // Notify admin to assign team members to each task
+            notificationService.notifyUser(
+                    owner,
+                    null,
+                    "Schedule generated for '" + project.getName() + "'. Please assign an assignee to each task.");
+        } else {
+            String summary = plan.getExplanationSummary() == null ? "" : plan.getExplanationSummary();
+            notificationService.notifyUser(
+                    owner,
+                    null,
+                    "Schedule generated in " + plan.getMode() + " mode. " + summary);
+        }
         for (ScheduleBlock block : plan.getBlocks()) {
             if (block.getDecision() != BlockDecision.EXCLUDED && block.getDecision() != BlockDecision.DELAYED) {
                 continue;
@@ -282,6 +433,9 @@ public class SchedulePlanServiceImpl implements SchedulePlanService {
         }
         if (block.getTask() != null) {
             Hibernate.initialize(block.getTask());
+            if (block.getTask().getAssignee() != null) {
+                Hibernate.initialize(block.getTask().getAssignee());
+            }
         }
     }
 }

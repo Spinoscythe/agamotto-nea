@@ -1,5 +1,6 @@
 package com.srikrishnanethi.agamotto.config;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.dao.DataAccessException;
@@ -23,7 +24,7 @@ public class ScheduleBlockReasonColumnMigrator implements ApplicationRunner {
 	}
 
 	@Override
-	public void run(ApplicationArguments args) {
+	public void run(@NonNull ApplicationArguments args) {
 		Integer length;
 		try {
 			length = jdbcTemplate.query(

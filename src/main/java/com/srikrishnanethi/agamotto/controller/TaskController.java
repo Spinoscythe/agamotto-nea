@@ -67,7 +67,8 @@ public class TaskController {
                 request.priority(),
                 request.deadline(),
                 request.estimatedDurationHours(),
-                request.complexity()));
+                request.complexity(),
+                request.assigneeId()));
         projectEventPublisher.publishTaskChanged(projectId, actorId);
         return created;
     }
@@ -157,7 +158,8 @@ public class TaskController {
                 request.estimatedDurationHours(),
                 request.correctedDurationHours(),
                 request.complexity(),
-                request.status()));
+                request.status(),
+                request.assigneeId()));
     }
 
     private Task requireAccessibleTask(String projectId, String taskId, boolean edit) {

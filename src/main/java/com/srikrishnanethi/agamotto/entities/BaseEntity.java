@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
-import org.hibernate.annotations.Comment;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -18,8 +17,7 @@ public abstract class BaseEntity {
 
     /** Surrogate primary key assigned on first persist. */
     @Id
-    @Comment("Primary key: UUID string (36 chars)")
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, nullable = false, updatable = false , comment = "Primary key: UUID string (36 chars)")
     private String id;
 
     /** Generates a random UUID when the row is first inserted. */

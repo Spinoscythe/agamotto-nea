@@ -6,13 +6,16 @@ import com.srikrishnanethi.agamotto.entities.TaskHistory;
 import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.enums.ChangeType;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
+import com.srikrishnanethi.agamotto.exception.ForbiddenException;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskHistoryRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserRepository;
+import com.srikrishnanethi.agamotto.service.NotificationService;
 import com.srikrishnanethi.agamotto.service.TaskService;
 import org.hibernate.Hibernate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,15 +32,26 @@ public class TaskServiceImpl implements TaskService {
     private final ProjectRepository projectRepository;
     private final TaskHistoryRepository taskHistoryRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    @Autowired
+    public TaskServiceImpl(TaskRepository taskRepository,
+                           ProjectRepository projectRepository,
+                           TaskHistoryRepository taskHistoryRepository,
+                           UserRepository userRepository,
+                           @Autowired(required = false) NotificationService notificationService) {
+        this.taskRepository = taskRepository;
+        this.projectRepository = projectRepository;
+        this.taskHistoryRepository = taskHistoryRepository;
+        this.userRepository = userRepository;
+        this.notificationService = notificationService;
+    }
 
     public TaskServiceImpl(TaskRepository taskRepository,
                            ProjectRepository projectRepository,
                            TaskHistoryRepository taskHistoryRepository,
                            UserRepository userRepository) {
-        this.taskRepository = taskRepository;
-        this.projectRepository = projectRepository;
-        this.taskHistoryRepository = taskHistoryRepository;
-        this.userRepository = userRepository;
+        this(taskRepository, projectRepository, taskHistoryRepository, userRepository, null);
     }
 
     @Override
@@ -50,7 +64,8 @@ public class TaskServiceImpl implements TaskService {
                        int priority,
                        LocalDateTime deadline,
                        double estimatedDurationHours,
-                       int complexity) {
+                       int complexity,
+                       String assigneeId) {
         Objects.requireNonNull(projectId, "projectId");
         Objects.requireNonNull(userId, "userId");
         Objects.requireNonNull(title, "title");
@@ -72,9 +87,31 @@ public class TaskServiceImpl implements TaskService {
         task.setStatus(TaskStatus.PENDING);
         task.setCreatedAt(Instant.now());
         task.setUpdatedAt(Instant.now());
+
+        // Only project admin (creator) can assign tasks
+        if (assigneeId != null && !assigneeId.isBlank() && !"unassigned".equalsIgnoreCase(assigneeId.trim())) {
+            boolean isOwner = project.getOwner() == null || userId.equals(project.getOwner().getId());
+            if (!isOwner) {
+                throw new ForbiddenException(
+                        "Only the project admin (the creator of the project) can decide the assignee for tasks.");
+            }
+            User assignee = requireUser(assigneeId.trim());
+            task.setAssignee(assignee);
+        }
+
         task = this.taskRepository.save(task);
         User actor = requireUser(userId);
-        writeHistory(task, actor, ChangeType.CREATED, "Created task '" + task.getTitle() + "'");
+        String historyDesc = task.getAssignee() != null
+                ? "Created task '" + task.getTitle() + "' (assigned to " + task.getAssignee().getFullName() + ")"
+                : "Created task '" + task.getTitle() + "'";
+        writeHistory(task, actor, ChangeType.CREATED, historyDesc);
+
+        // Notify assignee of assignment
+        if (task.getAssignee() != null && notificationService != null) {
+            String projName = project.getName() != null ? project.getName() : "Project";
+            notificationService.notifyUser(task.getAssignee(), task,
+                    "You have been assigned to task '" + task.getTitle() + "' in project '" + projName + "'.");
+        }
 
         initializeProject(task);
         return task;
@@ -108,12 +145,14 @@ public class TaskServiceImpl implements TaskService {
                        Double estimatedDurationHours,
                        Double correctedDurationHours,
                        Integer complexity,
-                       TaskStatus status) {
+                       TaskStatus status,
+                       String assigneeId) {
         Task task = this.getById(taskId);
         List<String> fieldChanges = new ArrayList<>();
         boolean statusChanged = false;
         TaskStatus previousStatus = task.getStatus();
         User user = requireUser(actorUserId);
+        User newlyAssignedUser = null;
 
         if (title != null && !title.isBlank() && !title.trim().equals(task.getTitle())) {
             fieldChanges.add("title: '" + task.getTitle() + "' -> '" + title.trim() + "'");
@@ -155,9 +194,42 @@ public class TaskServiceImpl implements TaskService {
             statusChanged = true;
             task.setStatus(status);
         }
+        if (assigneeId != null) {
+            String trimmed = assigneeId.trim();
+
+            // Only project admin (creator) can reassign tasks
+            boolean isOwner = task.getProject() == null || task.getProject().getOwner() == null
+                    || actorUserId.equals(task.getProject().getOwner().getId());
+            if (!isOwner) {
+                throw new ForbiddenException(
+                        "Only the project admin (the creator of the project) can decide or change the assignee for tasks.");
+            }
+
+            if (trimmed.isEmpty() || "unassigned".equalsIgnoreCase(trimmed)) {
+                if (task.getAssignee() != null) {
+                    fieldChanges.add("assignee: '" + task.getAssignee().getFullName() + "' -> unassigned");
+                    task.setAssignee(null);
+                }
+            } else if (task.getAssignee() == null || !trimmed.equals(task.getAssignee().getId())) {
+                User newAssignee = requireUser(trimmed);
+                String prevName = task.getAssignee() != null ? task.getAssignee().getFullName() : "unassigned";
+                fieldChanges.add("assignee: '" + prevName + "' -> '" + newAssignee.getFullName() + "'");
+                task.setAssignee(newAssignee);
+                newlyAssignedUser = newAssignee;
+            }
+        }
 
         task.setUpdatedAt(Instant.now());
         task = taskRepository.save(task);
+
+        // Notify newly assigned user
+        if (newlyAssignedUser != null && notificationService != null) {
+            String projName = task.getProject() != null && task.getProject().getName() != null
+                    ? task.getProject().getName()
+                    : "Project";
+            notificationService.notifyUser(newlyAssignedUser, task,
+                    "You have been assigned to task '" + task.getTitle() + "' in project '" + projName + "'.");
+        }
 
         if (statusChanged) {
             writeHistory(task, user, ChangeType.STATUS_CHANGED,
@@ -203,6 +275,9 @@ public class TaskServiceImpl implements TaskService {
     private static void initializeProject(Task task) {
         if (task.getProject() != null) {
             Hibernate.initialize(task.getProject());
+        }
+        if (task.getAssignee() != null) {
+            Hibernate.initialize(task.getAssignee());
         }
     }
 

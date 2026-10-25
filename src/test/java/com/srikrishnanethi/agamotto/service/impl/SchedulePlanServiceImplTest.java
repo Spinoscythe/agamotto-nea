@@ -59,6 +59,12 @@ class SchedulePlanServiceImplTest {
 	private SchedulerEngine schedulerEngine;
 	@Mock
 	private com.srikrishnanethi.agamotto.service.NotificationService notificationService;
+	@Mock
+	private com.srikrishnanethi.agamotto.service.scheduler.group.GroupScheduleBuilder groupScheduleBuilder;
+	@Mock
+	private com.srikrishnanethi.agamotto.repositories.ProjectMemberRepository projectMemberRepository;
+	@Mock
+	private com.srikrishnanethi.agamotto.service.scheduler.ScheduleBuilder scheduleBuilder;
 
 	private SchedulePlanServiceImpl service;
 
@@ -71,7 +77,10 @@ class SchedulePlanServiceImplTest {
 				schedulePlanRepository,
 				scheduleBlockRepository,
 				schedulerEngine,
-				notificationService);
+				notificationService,
+				groupScheduleBuilder,
+				projectMemberRepository,
+				scheduleBuilder);
 	}
 
 	@Test
@@ -173,5 +182,99 @@ class SchedulePlanServiceImplTest {
 		block.setDecision(BlockDecision.SCHEDULED);
 		block.setReason("original");
 		return block;
+	}
+
+	@Test
+	void generateAndPersistForGroupNotifiesAdminToAssignAssignees() {
+		User owner = new User();
+		owner.setId("admin1");
+		owner.setFullName("Admin User");
+
+		User member2 = new User();
+		member2.setId("u2");
+		member2.setFullName("Collab User");
+
+		Project project = new Project();
+		project.setId("p1");
+		project.setName("Group Science Project");
+		project.setOwner(owner);
+
+		UserProfile profile = new UserProfile();
+		profile.setPreferredStart(LocalTime.of(9, 0));
+		profile.setPreferredEnd(LocalTime.of(17, 0));
+
+		Task task = new Task();
+		task.setId("t1");
+		task.setTitle("Lab Work");
+
+		com.srikrishnanethi.agamotto.entities.ProjectMember pm1 = new com.srikrishnanethi.agamotto.entities.ProjectMember();
+		pm1.setUser(owner);
+		com.srikrishnanethi.agamotto.entities.ProjectMember pm2 = new com.srikrishnanethi.agamotto.entities.ProjectMember();
+		pm2.setUser(member2);
+
+		ScheduleBlock block = new ScheduleBlock();
+		block.setTask(task);
+		block.setDecision(BlockDecision.SCHEDULED);
+		block.setReason("ok");
+
+		when(projectRepository.findById("p1")).thenReturn(Optional.of(project));
+		when(userProfileRepository.findByUserId("admin1")).thenReturn(Optional.of(profile));
+		when(userProfileRepository.findByUserId("u2")).thenReturn(Optional.of(profile));
+		when(taskRepository.findByProjectIdAndStatusIn(eq("p1"), any())).thenReturn(List.of(task));
+		when(projectMemberRepository.findByProjectIdOrderByJoinedAtAsc("p1")).thenReturn(List.of(pm1, pm2));
+		when(groupScheduleBuilder.buildSchedule(any(), any(), any(), any())).thenReturn(List.of(block));
+		when(schedulePlanRepository.findByProjectIdOrderByGeneratedAtDesc("p1")).thenReturn(List.of());
+		when(schedulePlanRepository.save(any(SchedulePlan.class))).thenAnswer(inv -> inv.getArgument(0));
+
+		GeneratedSchedule generated = service.generateAndPersist(
+				"p1", LocalDate.of(2026, 8, 17), LocalDate.of(2026, 8, 21));
+
+		assertNotNull(generated);
+		verify(notificationService).notifyUser(
+				eq(owner),
+				isNull(),
+				eq("Schedule generated for 'Group Science Project'. Please assign an assignee to each task."));
+	}
+
+	@Test
+	void markUnattendedAndRearrangeSetsDeadlineErrorInSummaryWhenDeadlineApproached() {
+		User owner = new User();
+		owner.setId("u1");
+		Project project = new Project();
+		project.setId("p1");
+		project.setOwner(owner);
+
+		SchedulePlan plan = new SchedulePlan();
+		plan.setId("plan1");
+		plan.setProject(project);
+		plan.setEndDate(LocalDate.of(2026, 8, 14));
+
+		ScheduleBlock missedBlock = new ScheduleBlock();
+		missedBlock.setId("b1");
+		missedBlock.setSchedule(plan);
+
+		Task task = new Task();
+		task.setTitle("Coursework");
+
+		ScheduleBlock delayedErrorBlock = new ScheduleBlock();
+		delayedErrorBlock.setTask(task);
+		delayedErrorBlock.setDecision(BlockDecision.DELAYED);
+		String errorMsg = "Delayed: Error: Rearranging schedule after unattended session approached the day of the deadline (2026-08-14). Remaining 2.00h cannot be accommodated before deadline — you can't do anything anymore.";
+		delayedErrorBlock.setReason(errorMsg);
+
+		UserProfile profile = new UserProfile();
+		when(scheduleBlockRepository.findById("b1")).thenReturn(Optional.of(missedBlock));
+		when(userProfileRepository.findByUserId("u1")).thenReturn(Optional.of(profile));
+		when(scheduleBlockRepository.findByScheduleIdOrderByStartTime("plan1")).thenReturn(List.of(missedBlock));
+		when(scheduleBuilder.rearrangeForUnattendedSession(any(), eq(missedBlock), any(), eq(profile)))
+				.thenReturn(List.of(delayedErrorBlock));
+		when(scheduleBuilder.hasDeadlineApproachedError(any())).thenReturn(true);
+		when(schedulePlanRepository.save(any(SchedulePlan.class))).thenAnswer(inv -> inv.getArgument(0));
+
+		GeneratedSchedule result = service.markUnattendedAndRearrange("b1");
+
+		assertNotNull(result);
+		assertTrue(result.explanationSummary().contains("you can't do anything anymore"));
+		assertEquals(errorMsg, result.plan().getExplanationSummary());
 	}
 }
