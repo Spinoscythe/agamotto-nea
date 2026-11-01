@@ -299,6 +299,14 @@ export function ScheduleTimetable({
                       {sittingLabel}
                     </p>
                     <div className="flex items-center gap-1 shrink-0">
+                      {task?.priority ? (
+                        <span className="rounded bg-foreground/10 px-1 py-[1px] text-[0.6rem] font-bold leading-none text-foreground">
+                          P{task.priority}
+                        </span>
+                      ) : null}
+                      <span className="rounded bg-foreground/10 px-1 py-[1px] text-[0.6rem] font-bold leading-none text-foreground/80">
+                        {b.decision === 'DELAYED' ? 'Delayed' : b.decision === 'EXCLUDED' ? 'Excluded' : 'Scheduled'}
+                      </span>
                       {b.completed ? (
                         <CheckCircle2 className="size-3.5 shrink-0" aria-label="Completed" />
                       ) : null}

@@ -58,12 +58,18 @@ export function ScheduleWeekPreview({
   )
 
   const weeks = useMemo(() => {
+    // Always Mon-Sun: week starts on Monday on or before first day
+    const start = new Date(`${startDate}T12:00:00`)
+    const monday = new Date(start)
+    monday.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+    const mondayStr = toDateInputValue(monday)
+    const all = eachDateInclusive(mondayStr, endDate, 90)
     const list: string[][] = []
-    for (let i = 0; i < allDays.length; i += 7) {
-      list.push(allDays.slice(i, i + 7))
+    for (let i = 0; i < all.length; i += 7) {
+      list.push(all.slice(i, i + 7))
     }
     return list.length > 0 ? list : [[startDate]]
-  }, [allDays, startDate])
+  }, [startDate, endDate])
 
   const [weekIndex, setWeekIndex] = useState(0)
   const activeWeekIndex = Math.min(weekIndex, Math.max(0, weeks.length - 1))
