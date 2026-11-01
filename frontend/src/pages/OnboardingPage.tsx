@@ -33,6 +33,18 @@ export function OnboardingPage() {
       setError('Passwords do not match.')
       return
     }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    if (!/[0-9]/.test(password)) {
+      setError('Password must contain at least one number.')
+      return
+    }
+    if (!/[^A-Za-z0-9]/.test(password)) {
+      setError('Password must contain at least one symbol.')
+      return
+    }
 
     setPending(true)
     try {
@@ -91,9 +103,9 @@ export function OnboardingPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
-            <FieldDescription>At least 6 characters.</FieldDescription>
+            <FieldDescription>At least 8 chars, one number, one symbol.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="confirmPassword">Re-Enter Password</FieldLabel>
@@ -103,7 +115,7 @@ export function OnboardingPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
           </Field>
         </FieldGroup>
