@@ -3,6 +3,9 @@ package com.srikrishnanethi.agamotto.repositories;
 import com.srikrishnanethi.agamotto.entities.Task;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -52,4 +55,12 @@ public interface TaskRepository extends JpaRepository<Task, String> {
             TaskStatus status,
             Instant updatedFrom,
             Instant updatedTo);
+
+    /**
+     * Remove every task in a project. Called during project deletion after its
+     * schedule blocks and task history have been removed.
+     */
+    @Modifying
+    @Query("delete from Task t where t.project.id = :projectId")
+    void deleteByProjectId(@Param("projectId") String projectId);
 }

@@ -1,6 +1,6 @@
-import {useEffect, useMemo, useRef, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {Link, useSearchParams} from 'react-router-dom'
-import {DotsThreeIcon, PlusIcon} from '@phosphor-icons/react'
+import {PlusIcon} from '@phosphor-icons/react'
 import {toast} from 'sonner'
 import {
     ApiError,
@@ -13,37 +13,13 @@ import {
 } from '@/api'
 import {useAuth} from '@/auth/AuthContext'
 import {PageHeader} from '@/components/PageHeader'
-import {ProjectSharePanel} from '@/components/ProjectSharePanel'
-import {ScheduleWeekPreview} from '@/components/ScheduleWeekPreview'
+import {CreateProjectCard} from '@/components/projects/CreateProjectCard'
+import {ProjectGrid} from '@/components/projects/ProjectGrid'
+import {SelectedScheduleSection} from '@/components/projects/SelectedScheduleSection'
 import {Alert, AlertDescription} from '@/components/ui/alert'
 import {Button, buttonVariants} from '@/components/ui/button'
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card'
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuGroup,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-    Empty,
-    EmptyContent,
-    EmptyDescription,
-    EmptyHeader,
-    EmptyTitle,
-} from '@/components/ui/empty'
-import {Field, FieldGroup, FieldLabel} from '@/components/ui/field'
-import {Input} from '@/components/ui/input'
-import {Textarea} from '@/components/ui/textarea'
 import {cn} from '@/lib/utils'
 import {toDateInputValue} from '@/lib/datetime'
-import {planExplanation} from '@/lib/schedule'
 
 export function SchedulesPage() {
     const {user} = useAuth()
@@ -67,11 +43,6 @@ export function SchedulesPage() {
         d.setDate(d.getDate() + 14)
         return toDateInputValue(d)
     })
-    const [effortHours, setEffortHours] = useState(40)
-    const selectedProject = useMemo(
-        () => projects.find((project) => project.id === selectedProjectId) ?? null,
-        [projects, selectedProjectId],
-    )
 
     useEffect(() => {
         if (!user) return
@@ -153,10 +124,6 @@ export function SchedulesPage() {
             setError('End date must be on or after the start date.')
             return
         }
-        if (!Number.isFinite(effortHours) || effortHours < 0) {
-            setError('Effort hours must be 0 or greater.')
-            return
-        }
         creatingRef.current = true
         setError(null)
         try {
@@ -166,7 +133,6 @@ export function SchedulesPage() {
                 description: projectDesc.trim() || undefined,
                 startDate,
                 endDate,
-                estimatedEffortHours: effortHours,
             })
             setProjectName('')
             setProjectDesc('')
@@ -287,206 +253,37 @@ export function SchedulesPage() {
             </div>
 
             {showCreate ? (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>New project</CardTitle>
-                        <CardDescription>
-                            A project holds your tasks. After you add tasks, you can generate a schedule.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form className="flex flex-col gap-4" onSubmit={createProject}>
-                            <FieldGroup>
-                                <Field>
-                                    <FieldLabel htmlFor="projectName">Project name</FieldLabel>
-                                    <Input
-                                        id="projectName"
-                                        value={projectName}
-                                        onChange={(e) => setProjectName(e.target.value)}
-                                        required
-                                        maxLength={200}
-                                        placeholder="e.g. A-level coursework"
-                                    />
-                                </Field>
-                                <Field>
-                                    <FieldLabel htmlFor="projectDesc">Description</FieldLabel>
-                                    <Textarea
-                                        id="projectDesc"
-                                        value={projectDesc}
-                                        onChange={(e) => setProjectDesc(e.target.value)}
-                                        rows={2}
-                                    />
-                                </Field>
-                                <div className="grid gap-3 sm:grid-cols-3">
-                                    <Field>
-                                        <FieldLabel htmlFor="startDate">Start</FieldLabel>
-                                        <Input
-                                            id="startDate"
-                                            type="date"
-                                            value={startDate}
-                                            onChange={(e) => setStartDate(e.target.value)}
-                                            required
-                                        />
-                                    </Field>
-                                    <Field>
-                                        <FieldLabel htmlFor="endDate">End</FieldLabel>
-                                        <Input
-                                            id="endDate"
-                                            type="date"
-                                            value={endDate}
-                                            onChange={(e) => setEndDate(e.target.value)}
-                                            required
-                                        />
-                                    </Field>
-                                    <Field>
-                                        <FieldLabel htmlFor="effort">Effort (hours)</FieldLabel>
-                                        <Input
-                                            id="effort"
-                                            type="number"
-                                            min={0}
-                                            step={0.5}
-                                            value={Number.isFinite(effortHours) ? effortHours : ''}
-                                            onChange={(e) =>
-                                                setEffortHours(e.target.value === '' ? Number.NaN : Number(e.target.value))
-                                            }
-                                            required
-                                        />
-                                    </Field>
-                                </div>
-                            </FieldGroup>
-                            <Button type="submit" className="w-fit">
-                                Create project
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
-            ) : null}
-
-            {projects.length > 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {projects.map((p) => (
-                        <Card
-                            key={p.id}
-                            size="sm"
-                            className={cn(
-                                'relative cursor-pointer transition-colors hover:bg-muted/40',
-                                p.id === selectedProjectId && 'ring-2 ring-ring',
-                            )}
-                            onClick={() => setSelectedProjectId(p.id)}
-                        >
-                            <CardHeader className="pr-12">
-                                <CardTitle className="text-base">{p.name}</CardTitle>
-                                <CardDescription>
-                                    {p.startDate} → {p.endDate} · {p.estimatedEffortHours}h
-                                </CardDescription>
-                            </CardHeader>
-                            <div
-                                className="absolute top-2 right-2"
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => e.stopPropagation()}
-                            >
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger
-                                        render={
-                                            <Button
-                                                variant="ghost"
-                                                size="icon-sm"
-                                                aria-label={`Actions for ${p.name}`}
-                                            />
-                                        }
-                                    >
-                                        <DotsThreeIcon/>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="min-w-44">
-                                        <DropdownMenuGroup>
-                                            <DropdownMenuItem
-                                                render={<Link to={`/generate?projectId=${p.id}`}/>}
-                                            >
-                                                Add tasks & generate
-                                            </DropdownMenuItem>
-                                            {user?.id === p.ownerId ? (
-                                                <DropdownMenuItem
-                                                    variant="destructive"
-                                                    onClick={() => void deleteProject(p.id)}
-                                                >
-                                                    Delete project
-                                                </DropdownMenuItem>
-                                            ) : null}
-                                            <DropdownMenuItem render={<Link to="/settings"/>}>
-                                                Edit preferences
-                                            </DropdownMenuItem>
-                                        </DropdownMenuGroup>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </Card>
-                    ))}
-                </div>
-            ) : !loading ? (
-                <Empty className="border border-dashed">
-                    <EmptyHeader>
-                        <EmptyTitle>No projects yet</EmptyTitle>
-                        <EmptyDescription>
-                            Create a project first. Then add tasks and generate a schedule.
-                        </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                        <Button type="button" onClick={() => setShowCreate(true)}>
-                            <PlusIcon data-icon="inline-start"/>
-                            New project
-                        </Button>
-                    </EmptyContent>
-                </Empty>
-            ) : null}
-
-            {selectedProject ? (
-                <ProjectSharePanel
-                    project={selectedProject}
-                    onLeft={() => {
-                        setProjects((prev) => prev.filter((p) => p.id !== selectedProject.id))
-                        setSelectedProjectId('')
-                    }}
+                <CreateProjectCard
+                    projectName={projectName}
+                    projectDesc={projectDesc}
+                    startDate={startDate}
+                    endDate={endDate}
+                    onNameChange={setProjectName}
+                    onDescriptionChange={setProjectDesc}
+                    onStartDateChange={setStartDate}
+                    onEndDateChange={setEndDate}
+                    onSubmit={createProject}
                 />
             ) : null}
 
+            <ProjectGrid
+                projects={projects}
+                selectedProjectId={selectedProjectId}
+                currentUserId={user?.id}
+                loading={loading}
+                onSelectProject={setSelectedProjectId}
+                onDeleteProject={(projectId) => void deleteProject(projectId)}
+                onCreateFirst={() => setShowCreate(true)}
+            />
 
-            {selectedPlan ? (
-                <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">Generated schedule</p>
-                    <p className="text-sm text-muted-foreground">
-                        {selectedPlan.mode} · {selectedPlan.startDate} to {selectedPlan.endDate}
-                        {planExplanation(selectedPlan)
-                            ? ` · ${planExplanation(selectedPlan)}`
-                            : null}
-                    </p>
-                    <ScheduleWeekPreview
-                        blocks={selectedPlan.blocks}
-                        tasks={tasks}
-                        startDate={selectedPlan.startDate}
-                        endDate={selectedPlan.endDate}
-                        projectId={selectedProjectId}
-                        onDeleteTask={handleDeleteTask}
-                        onMarkUnattended={handleMarkUnattended}
-                    />
-                </div>
-            ) : selectedProjectId && !loading ? (
-                <Empty className="border border-dashed">
-                    <EmptyHeader>
-                        <EmptyTitle>No schedule for this project yet</EmptyTitle>
-                        <EmptyDescription>
-                            Add your tasks, then generate a timetable for the selected project.
-                        </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                        <Link
-                            to={`/generate?projectId=${selectedProjectId}`}
-                            className={cn(buttonVariants())}
-                        >
-                            Add tasks & generate schedule
-                        </Link>
-                    </EmptyContent>
-                </Empty>
-            ) : null}
+            <SelectedScheduleSection
+                selectedPlan={selectedPlan}
+                tasks={tasks}
+                selectedProjectId={selectedProjectId}
+                loading={loading}
+                onDeleteTask={(taskId) => void handleDeleteTask(taskId)}
+                onMarkUnattended={(blockId) => void handleMarkUnattended(blockId)}
+            />
         </div>
     )
 }

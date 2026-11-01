@@ -23,7 +23,8 @@ public class ScheduleMapper {
 				block.getEndTime(),
 				block.getDecision(),
 				block.getReason(),
-				block.isManuallyOverridden());
+				block.isManuallyOverridden(),
+				block.isCompleted());
 	}
 
 	public SchedulePlanResponse toPlanResponse(SchedulePlan plan) {

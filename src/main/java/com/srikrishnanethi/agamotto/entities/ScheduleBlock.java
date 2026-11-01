@@ -52,6 +52,10 @@ public class ScheduleBlock extends BaseEntity {
     @Column(name = "manually_overridden", nullable = false)
     private boolean manuallyOverridden = false;
 
+    @Comment("True when the user has marked this sitting as completed")
+    @Column(name = "completed", nullable = false)
+    private boolean completed = false;
+
     public SchedulePlan getSchedule() {
         return schedule;
     }
@@ -106,5 +110,13 @@ public class ScheduleBlock extends BaseEntity {
 
     public void setManuallyOverridden(boolean manuallyOverridden) {
         this.manuallyOverridden = manuallyOverridden;
+    }
+
+    public boolean isCompleted() {
+        return completed;
+    }
+
+    public void setCompleted(boolean completed) {
+        this.completed = completed;
     }
 }

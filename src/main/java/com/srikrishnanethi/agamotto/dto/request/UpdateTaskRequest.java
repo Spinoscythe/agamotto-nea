@@ -20,20 +20,5 @@ public record UpdateTaskRequest(
 		@Positive @DecimalMax("1000") Double estimatedDurationHours,
 		@Positive @DecimalMax("1000") Double correctedDurationHours,
 		@Min(1) @Max(5) Integer complexity,
-		TaskStatus status,
-		String assigneeId) {
-
-	public UpdateTaskRequest(
-			String actorUserId,
-			String title,
-			String description,
-			String category,
-			Integer priority,
-			LocalDateTime deadline,
-			Double estimatedDurationHours,
-			Double correctedDurationHours,
-			Integer complexity,
-			TaskStatus status) {
-		this(actorUserId, title, description, category, priority, deadline, estimatedDurationHours, correctedDurationHours, complexity, status, null);
-	}
+		TaskStatus status) {
 }

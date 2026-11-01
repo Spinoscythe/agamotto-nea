@@ -8,9 +8,11 @@ import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.ScheduleMode;
+import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
 import com.srikrishnanethi.agamotto.repositories.ScheduleBlockRepository;
 import com.srikrishnanethi.agamotto.repositories.SchedulePlanRepository;
+import com.srikrishnanethi.agamotto.repositories.TaskDependencyRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserProfileRepository;
 import com.srikrishnanethi.agamotto.service.scheduler.GeneratedSchedule;
@@ -30,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -50,6 +53,8 @@ class SchedulePlanServiceImplTest {
 	@Mock
 	private TaskRepository taskRepository;
 	@Mock
+	private TaskDependencyRepository taskDependencyRepository;
+	@Mock
 	private UserProfileRepository userProfileRepository;
 	@Mock
 	private SchedulePlanRepository schedulePlanRepository;
@@ -60,10 +65,6 @@ class SchedulePlanServiceImplTest {
 	@Mock
 	private com.srikrishnanethi.agamotto.service.NotificationService notificationService;
 	@Mock
-	private com.srikrishnanethi.agamotto.service.scheduler.group.GroupScheduleBuilder groupScheduleBuilder;
-	@Mock
-	private com.srikrishnanethi.agamotto.repositories.ProjectMemberRepository projectMemberRepository;
-	@Mock
 	private com.srikrishnanethi.agamotto.service.scheduler.ScheduleBuilder scheduleBuilder;
 
 	private SchedulePlanServiceImpl service;
@@ -73,13 +74,12 @@ class SchedulePlanServiceImplTest {
 		service = new SchedulePlanServiceImpl(
 				projectRepository,
 				taskRepository,
+				taskDependencyRepository,
 				userProfileRepository,
 				schedulePlanRepository,
 				scheduleBlockRepository,
 				schedulerEngine,
 				notificationService,
-				groupScheduleBuilder,
-				projectMemberRepository,
 				scheduleBuilder);
 	}
 
@@ -159,10 +159,40 @@ class SchedulePlanServiceImplTest {
 		when(scheduleBlockRepository.save(any(ScheduleBlock.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		String tooLong = "x".repeat(1200);
-		ScheduleBlock saved = service.overrideBlock("b1", null, null, null, tooLong);
+		ScheduleBlock saved = service.overrideBlock("b1", null, null, null, tooLong, null);
 
 		assertEquals(1000, saved.getReason().length());
 		assertTrue(saved.getReason().endsWith("..."));
+	}
+
+	@Test
+	void overrideSetsCompletedFlag() {
+		ScheduleBlock block = scheduledBlock();
+		when(scheduleBlockRepository.findById("b1")).thenReturn(Optional.of(block));
+		when(scheduleBlockRepository.findByScheduleIdOrderByStartTime("plan1")).thenReturn(List.of(block));
+		when(scheduleBlockRepository.save(any(ScheduleBlock.class))).thenAnswer(inv -> inv.getArgument(0));
+
+		ScheduleBlock saved = service.overrideBlock("b1", null, null, null, null, true);
+
+		assertTrue(saved.isCompleted());
+		assertEquals(TaskStatus.COMPLETED, saved.getTask().getStatus());
+		verify(taskRepository).save(saved.getTask());
+	}
+
+	@Test
+	void overrideUnsetsCompletedFlagAndReopensTask() {
+		ScheduleBlock block = scheduledBlock();
+		block.setCompleted(true);
+		block.getTask().setStatus(TaskStatus.COMPLETED);
+		when(scheduleBlockRepository.findById("b1")).thenReturn(Optional.of(block));
+		when(scheduleBlockRepository.findByScheduleIdOrderByStartTime("plan1")).thenReturn(List.of(block));
+		when(scheduleBlockRepository.save(any(ScheduleBlock.class))).thenAnswer(inv -> inv.getArgument(0));
+
+		ScheduleBlock saved = service.overrideBlock("b1", null, null, null, null, false);
+
+		assertFalse(saved.isCompleted());
+		assertEquals(TaskStatus.IN_PROGRESS, saved.getTask().getStatus());
+		verify(taskRepository).save(saved.getTask());
 	}
 
 	private static ScheduleBlock scheduledBlock() {
@@ -182,58 +212,6 @@ class SchedulePlanServiceImplTest {
 		block.setDecision(BlockDecision.SCHEDULED);
 		block.setReason("original");
 		return block;
-	}
-
-	@Test
-	void generateAndPersistForGroupNotifiesAdminToAssignAssignees() {
-		User owner = new User();
-		owner.setId("admin1");
-		owner.setFullName("Admin User");
-
-		User member2 = new User();
-		member2.setId("u2");
-		member2.setFullName("Collab User");
-
-		Project project = new Project();
-		project.setId("p1");
-		project.setName("Group Science Project");
-		project.setOwner(owner);
-
-		UserProfile profile = new UserProfile();
-		profile.setPreferredStart(LocalTime.of(9, 0));
-		profile.setPreferredEnd(LocalTime.of(17, 0));
-
-		Task task = new Task();
-		task.setId("t1");
-		task.setTitle("Lab Work");
-
-		com.srikrishnanethi.agamotto.entities.ProjectMember pm1 = new com.srikrishnanethi.agamotto.entities.ProjectMember();
-		pm1.setUser(owner);
-		com.srikrishnanethi.agamotto.entities.ProjectMember pm2 = new com.srikrishnanethi.agamotto.entities.ProjectMember();
-		pm2.setUser(member2);
-
-		ScheduleBlock block = new ScheduleBlock();
-		block.setTask(task);
-		block.setDecision(BlockDecision.SCHEDULED);
-		block.setReason("ok");
-
-		when(projectRepository.findById("p1")).thenReturn(Optional.of(project));
-		when(userProfileRepository.findByUserId("admin1")).thenReturn(Optional.of(profile));
-		when(userProfileRepository.findByUserId("u2")).thenReturn(Optional.of(profile));
-		when(taskRepository.findByProjectIdAndStatusIn(eq("p1"), any())).thenReturn(List.of(task));
-		when(projectMemberRepository.findByProjectIdOrderByJoinedAtAsc("p1")).thenReturn(List.of(pm1, pm2));
-		when(groupScheduleBuilder.buildSchedule(any(), any(), any(), any())).thenReturn(List.of(block));
-		when(schedulePlanRepository.findByProjectIdOrderByGeneratedAtDesc("p1")).thenReturn(List.of());
-		when(schedulePlanRepository.save(any(SchedulePlan.class))).thenAnswer(inv -> inv.getArgument(0));
-
-		GeneratedSchedule generated = service.generateAndPersist(
-				"p1", LocalDate.of(2026, 8, 17), LocalDate.of(2026, 8, 21));
-
-		assertNotNull(generated);
-		verify(notificationService).notifyUser(
-				eq(owner),
-				isNull(),
-				eq("Schedule generated for 'Group Science Project'. Please assign an assignee to each task."));
 	}
 
 	@Test
@@ -266,7 +244,7 @@ class SchedulePlanServiceImplTest {
 		when(scheduleBlockRepository.findById("b1")).thenReturn(Optional.of(missedBlock));
 		when(userProfileRepository.findByUserId("u1")).thenReturn(Optional.of(profile));
 		when(scheduleBlockRepository.findByScheduleIdOrderByStartTime("plan1")).thenReturn(List.of(missedBlock));
-		when(scheduleBuilder.rearrangeForUnattendedSession(any(), eq(missedBlock), any(), eq(profile)))
+		when(scheduleBuilder.rearrangeForUnattendedSession(any(), eq(missedBlock), any(), eq(profile), any()))
 				.thenReturn(List.of(delayedErrorBlock));
 		when(scheduleBuilder.hasDeadlineApproachedError(any())).thenReturn(true);
 		when(schedulePlanRepository.save(any(SchedulePlan.class))).thenAnswer(inv -> inv.getArgument(0));

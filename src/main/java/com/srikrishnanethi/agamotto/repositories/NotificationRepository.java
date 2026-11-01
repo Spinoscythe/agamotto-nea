@@ -2,6 +2,9 @@ package com.srikrishnanethi.agamotto.repositories;
 
 import com.srikrishnanethi.agamotto.entities.Notification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -20,14 +23,24 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     List<Notification> findByUserIdAndReadFalseOrderByCreatedAtDesc(String userId);
 
     /**
-     * Alerts that point at a given invite. When an invite is cancelled or
-     * resolved, these rows are marked read so the badge drops.
-     */
-    List<Notification> findByInviteId(String inviteId);
-
-    /**
      * Delete every alert tied to a project. Called before the project row
      * itself is deleted so the FK does not block the drop.
      */
-    void deleteByProjectId(String projectId);
+    @Modifying
+    @Query("delete from Notification n where n.project.id = :projectId")
+    void deleteByProjectId(@Param("projectId") String projectId);
+
+    /**
+     * Delete every alert that references a task in the project, even when the
+     * alert's {@code project_id} was not populated. Must run before the tasks
+     * are deleted so the {@code notifications.task_id} FK does not block it.
+     */
+    @Modifying
+    @Query("""
+            delete from Notification n
+            where n.task.id in (
+                select t.id from Task t where t.project.id = :projectId
+            )
+            """)
+    void deleteByTaskProjectId(@Param("projectId") String projectId);
 }

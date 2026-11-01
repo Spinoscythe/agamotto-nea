@@ -16,8 +16,7 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, String> {
 
     /**
-     * SELECT by unique email. Used by {@code UserServiceImpl} login and by
-     * {@code CollaborationServiceImpl} when resolving an invitee.
+     * SELECT by unique email. Used by {@code UserServiceImpl} login.
      */
     Optional<User> findByEmail(String email);
 

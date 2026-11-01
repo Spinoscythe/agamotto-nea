@@ -10,9 +10,6 @@ import org.springframework.stereotype.Component;
 public class TaskMapper {
 
 	public TaskResponse toResponse(Task task) {
-		String assigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
-		String assigneeName = task.getAssignee() != null ? task.getAssignee().getFullName() : null;
-		String assigneeEmail = task.getAssignee() != null ? task.getAssignee().getEmail() : null;
 		return new TaskResponse(
 				task.getId(),
 				task.getProject().getId(),
@@ -26,10 +23,7 @@ public class TaskMapper {
 				task.getComplexity(),
 				task.getStatus(),
 				task.getCreatedAt(),
-				task.getUpdatedAt(),
-				assigneeId,
-				assigneeName,
-				assigneeEmail);
+				task.getUpdatedAt());
 	}
 
 	public TaskHistoryResponse toHistoryResponse(TaskHistory history) {

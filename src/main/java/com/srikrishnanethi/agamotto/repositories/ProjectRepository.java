@@ -7,15 +7,15 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * CRUD for {@code projects}. Ownership queries use {@code user_id} (the owner);
- * membership queries live on {@link ProjectMemberRepository}.
+ * CRUD for {@code projects}. Projects are owned by a single user; access is
+ * resolved from {@code user_id} only.
  */
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, String> {
 
     /**
-     * Every project this user created (not including projects they were invited to).
-     * {@code ProjectServiceImpl.listAccessible} unions this with memberships.
+     * Every project this user created.
+     * {@code ProjectServiceImpl.listAccessible} returns exactly this set.
      */
     List<Project> findByOwnerId(String userId);
 }

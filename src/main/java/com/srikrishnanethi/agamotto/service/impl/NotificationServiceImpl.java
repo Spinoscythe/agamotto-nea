@@ -88,8 +88,5 @@ public class NotificationServiceImpl implements NotificationService {
 		if (notification.getProject() != null) {
 			Hibernate.initialize(notification.getProject());
 		}
-		if (notification.getInvite() != null) {
-			Hibernate.initialize(notification.getInvite());
-		}
 	}
 }

@@ -24,7 +24,8 @@ public interface SchedulePlanService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             BlockDecision decision,
-            String reason);
+            String reason,
+            Boolean completed);
 
     RescheduleResult rescheduleBlock(
             String blockId,

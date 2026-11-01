@@ -45,7 +45,7 @@ public class DashboardController {
             @PathVariable String projectId,
             @RequestParam ReportPeriod period,
             @RequestParam(required = false) LocalDate asOf) {
-        projectAccessService.requireView(AgamottoSecurity.currentUserId(), projectId);
+        projectAccessService.requireAccess(AgamottoSecurity.currentUserId(), projectId);
         LocalDate end = asOf != null ? asOf : LocalDate.now();
         return dashboardMapper.toResponse(
                 dashboardService.generateReportForProject(projectId, period, end));

@@ -10,6 +10,5 @@ public record ProjectResponse(
 		String description,
 		LocalDate startDate,
 		LocalDate endDate,
-		double estimatedEffortHours,
 		Instant createdAt) {
 }

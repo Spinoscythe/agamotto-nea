@@ -1,16 +1,15 @@
 package com.srikrishnanethi.agamotto.service.impl;
 
 import com.srikrishnanethi.agamotto.entities.Project;
-import com.srikrishnanethi.agamotto.entities.ProjectMember;
 import com.srikrishnanethi.agamotto.entities.User;
-import com.srikrishnanethi.agamotto.entities.enums.ProjectRole;
-import com.srikrishnanethi.agamotto.exception.ConflictException;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.NotificationRepository;
 import com.srikrishnanethi.agamotto.repositories.ProjectInviteRepository;
 import com.srikrishnanethi.agamotto.repositories.ProjectMemberRepository;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
+import com.srikrishnanethi.agamotto.repositories.ScheduleBlockRepository;
 import com.srikrishnanethi.agamotto.repositories.SchedulePlanRepository;
+import com.srikrishnanethi.agamotto.repositories.TaskHistoryRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserRepository;
 import com.srikrishnanethi.agamotto.service.ProjectService;
@@ -20,9 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -30,7 +27,9 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final TaskRepository taskRepository;
+    private final TaskHistoryRepository taskHistoryRepository;
     private final SchedulePlanRepository schedulePlanRepository;
+    private final ScheduleBlockRepository scheduleBlockRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectInviteRepository projectInviteRepository;
     private final NotificationRepository notificationRepository;
@@ -38,14 +37,18 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectServiceImpl(ProjectRepository projectRepository,
                               UserRepository userRepository,
                               TaskRepository taskRepository,
+                              TaskHistoryRepository taskHistoryRepository,
                               SchedulePlanRepository schedulePlanRepository,
+                              ScheduleBlockRepository scheduleBlockRepository,
                               ProjectMemberRepository projectMemberRepository,
                               ProjectInviteRepository projectInviteRepository,
                               NotificationRepository notificationRepository) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.taskRepository = taskRepository;
+        this.taskHistoryRepository = taskHistoryRepository;
         this.schedulePlanRepository = schedulePlanRepository;
+        this.scheduleBlockRepository = scheduleBlockRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.projectInviteRepository = projectInviteRepository;
         this.notificationRepository = notificationRepository;
@@ -57,8 +60,7 @@ public class ProjectServiceImpl implements ProjectService {
                           String name,
                           String description,
                           LocalDate startDate,
-                          LocalDate endDate,
-                          double estimatedEffortHours) {
+                          LocalDate endDate) {
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(startDate, "startDate");
@@ -74,14 +76,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setDescription(description);
         project.setStartDate(startDate);
         project.setEndDate(endDate);
-        project.setEstimatedEffortHours(estimatedEffortHours);
         Project save = this.projectRepository.save(project);
-        ProjectMember ownerMembership = new ProjectMember();
-        ownerMembership.setProject(save);
-        ownerMembership.setUser(user);
-        ownerMembership.setRole(ProjectRole.OWNER);
-        ownerMembership.setJoinedAt(Instant.now());
-        this.projectMemberRepository.save(ownerMembership);
         initializeOwner(save);
         return save;
     }
@@ -98,20 +93,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional(readOnly = true)
     public List<Project> listAccessible(String userId) {
-        // LinkedHashMap: O(1) de-dupe of owned ∪ member projects while keeping
-        // insertion order (owned first). HashMap would shuffle the Projects page;
-        // ArrayList + contains would be O(n²).
-        Map<String, Project> unique = new LinkedHashMap<>();
-        for (Project project : this.projectRepository.findByOwnerId(userId)) {
-            unique.put(project.getId(), project);
-        }
-        for (ProjectMember member : this.projectMemberRepository.findByUserId(userId)) {
-            Project project = member.getProject();
-            if (project != null && project.getId() != null) {
-                unique.putIfAbsent(project.getId(), project);
-            }
-        }
-        List<Project> projects = List.copyOf(unique.values());
+        List<Project> projects = this.projectRepository.findByOwnerId(userId);
         projects.forEach(ProjectServiceImpl::initializeOwner);
         return projects;
     }
@@ -122,8 +104,7 @@ public class ProjectServiceImpl implements ProjectService {
                           String name,
                           String description,
                           LocalDate startDate,
-                          LocalDate endDate,
-                          Double estimatedEffortHours) {
+                          LocalDate endDate) {
         Project project = getById(projectId);
 
         if (name != null && !name.isBlank()) {
@@ -138,9 +119,6 @@ public class ProjectServiceImpl implements ProjectService {
         if (endDate != null) {
             project.setEndDate(endDate);
         }
-        if (estimatedEffortHours != null) {
-            project.setEstimatedEffortHours(estimatedEffortHours);
-        }
         validateDateRange(project.getStartDate(), project.getEndDate());
         Project saved = projectRepository.save(project);
         initializeOwner(saved);
@@ -151,14 +129,16 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public void delete(String projectId) {
         Project project = getById(projectId);
-        if (!taskRepository.findByProjectId(projectId).isEmpty()) {
-            throw new ConflictException("Cannot delete project with existing tasks: " + projectId);
-        }
-        if (schedulePlanRepository.existsByProjectId(projectId)) {
-            throw new ConflictException("Cannot delete project with existing schedules: " + projectId);
-        }
+        // Notifications reference projects, tasks, and invites, so they must go
+        // first. Then remove schedule data and tasks before their parents.
         notificationRepository.deleteByProjectId(projectId);
+        notificationRepository.deleteByTaskProjectId(projectId);
         projectInviteRepository.deleteByProjectId(projectId);
+        scheduleBlockRepository.deleteByProjectId(projectId);
+        scheduleBlockRepository.deleteByTaskProjectId(projectId);
+        taskHistoryRepository.deleteByProjectId(projectId);
+        taskRepository.deleteByProjectId(projectId);
+        schedulePlanRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
     }

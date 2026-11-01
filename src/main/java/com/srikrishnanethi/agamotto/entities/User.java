@@ -46,6 +46,9 @@ public class User extends BaseEntity {
     @OneToMany(mappedBy = "owner")
     private List<Project> projects = new ArrayList<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Leave> leaves = new ArrayList<>();
+
     public String getFullName() {
         return fullName;
     }
@@ -95,5 +98,13 @@ public class User extends BaseEntity {
 
     public void setProjects(List<Project> projects) {
         this.projects = projects;
+    }
+
+    public List<Leave> getLeaves() {
+        return leaves;
+    }
+
+    public void setLeaves(List<Leave> leaves) {
+        this.leaves = leaves;
     }
 }

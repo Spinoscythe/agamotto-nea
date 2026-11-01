@@ -3,7 +3,6 @@ import {Link} from 'react-router-dom'
 import {CheckCheck} from 'lucide-react'
 import {
     ApiError,
-    collaborationApi,
     notificationsApi,
     type NotificationResponse,
 } from '@/api'
@@ -26,7 +25,7 @@ import {cn} from '@/lib/utils'
 export function NotificationsPage() {
     const {user} = useAuth()
     const [notifications, setNotifications] = useState<NotificationResponse[]>([])
-    const [filter, setFilter] = useState<'ALL' | 'SCHEDULE' | 'INVITE' | 'TASK'>('ALL')
+    const [filter, setFilter] = useState<'ALL' | 'SCHEDULE' | 'TASK'>('ALL')
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
 
@@ -70,27 +69,10 @@ export function NotificationsPage() {
         }
     }
 
-    async function respondToInvite(notification: NotificationResponse, accept: boolean) {
-        if (!notification.inviteId) return
-        try {
-            if (accept) {
-                await collaborationApi.acceptInvite(notification.inviteId)
-            } else {
-                await collaborationApi.declineInvite(notification.inviteId)
-            }
-            setNotifications((prev) => prev.filter((n) => n.id !== notification.id))
-        } catch (err) {
-            setError(err instanceof ApiError ? err.message : 'Could not respond to invite')
-        }
-    }
-
     const filtered = useMemo(() => {
         if (filter === 'ALL') return notifications
         if (filter === 'SCHEDULE') {
             return notifications.filter((n) => n.type === 'SCHEDULE' || /schedule|serenity|crunch/i.test(n.message))
-        }
-        if (filter === 'INVITE') {
-            return notifications.filter((n) => n.type === 'PROJECT_INVITE' || /invite/i.test(n.message))
         }
         if (filter === 'TASK') {
             return notifications.filter((n) => n.taskId != null || /task/i.test(n.message))
@@ -102,7 +84,7 @@ export function NotificationsPage() {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Notifications"
-                description="Review schedule generation summaries, team invites, and task updates."
+                description="Review schedule generation summaries and task updates."
                 actions={
                     notifications.length > 0 ? (
                         <Button variant="outline" size="sm" onClick={() => void markAllRead()}>
@@ -125,7 +107,6 @@ export function NotificationsPage() {
                     <TabsList>
                         <TabsTrigger value="ALL">All ({notifications.length})</TabsTrigger>
                         <TabsTrigger value="SCHEDULE">Schedules</TabsTrigger>
-                        <TabsTrigger value="INVITE">Invites</TabsTrigger>
                         <TabsTrigger value="TASK">Tasks</TabsTrigger>
                     </TabsList>
                 </Tabs>
@@ -158,7 +139,6 @@ export function NotificationsPage() {
                                     key={n.id}
                                     notification={n}
                                     onMarkRead={markRead}
-                                    onRespondInvite={respondToInvite}
                                 />
                             ))}
                         </div>

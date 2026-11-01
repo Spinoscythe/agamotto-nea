@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { GenerateSchedulePage } from '@/pages/GenerateSchedulePage'
 import { HistoryPage } from '@/pages/HistoryPage'
+import { LeavesPage } from '@/pages/LeavesPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/projects" element={<SchedulesPage />} />
               <Route path="/schedules" element={<Navigate to="/projects" replace />} />
               <Route path="/generate" element={<GenerateSchedulePage />} />
+              <Route path="/leaves" element={<LeavesPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />

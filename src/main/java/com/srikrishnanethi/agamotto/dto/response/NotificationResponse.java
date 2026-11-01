@@ -9,7 +9,6 @@ public record NotificationResponse(
 		String userId,
 		String taskId,
 		String projectId,
-		String inviteId,
 		NotificationType type,
 		String message,
 		Instant createdAt,

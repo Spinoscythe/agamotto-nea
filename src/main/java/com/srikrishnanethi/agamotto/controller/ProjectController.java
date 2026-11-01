@@ -48,8 +48,7 @@ public class ProjectController {
                 request.name(),
                 request.description(),
                 request.startDate(),
-                request.endDate(),
-                request.estimatedEffortHours()));
+                request.endDate()));
     }
 
     @GetMapping
@@ -61,19 +60,18 @@ public class ProjectController {
 
     @GetMapping("/{projectId}")
     public ProjectResponse get(@PathVariable String projectId) {
-        projectAccessService.requireView(AgamottoSecurity.currentUserId(), projectId);
+        projectAccessService.requireAccess(AgamottoSecurity.currentUserId(), projectId);
         return this.projectMapper.toResponse(this.projectService.getById(projectId));
     }
 
     @PutMapping("/{projectId}")
     public ProjectResponse update(@PathVariable String projectId, @Valid @RequestBody UpdateProjectRequest request) {
-        projectAccessService.requireEdit(AgamottoSecurity.currentUserId(), projectId);
+        projectAccessService.requireAccess(AgamottoSecurity.currentUserId(), projectId);
         return this.projectMapper.toResponse(this.projectService.update(projectId,
                 request.name(),
                 request.description(),
                 request.startDate(),
-                request.endDate(),
-                request.estimatedEffortHours()));
+                request.endDate()));
     }
 
     @DeleteMapping("/{projectId}")

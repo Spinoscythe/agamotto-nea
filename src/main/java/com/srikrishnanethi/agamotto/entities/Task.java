@@ -81,10 +81,19 @@ public class Task extends BaseEntity {
     @OneToMany(mappedBy = "task")
     private List<TaskHistory> history = new ArrayList<>();
 
-    @Comment("Assigned member (FK users.user_id); null if unassigned")
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assignee_id")
-    private User assignee;
+    /**
+     * Tasks that must finish before this task can start.
+     * The "prerequisites" of this task.
+     */
+    @OneToMany(mappedBy = "task")
+    private List<TaskDependency> dependencies = new ArrayList<>();
+
+    /**
+     * Tasks that cannot start until this task finishes.
+     * The "dependents" of this task.
+     */
+    @OneToMany(mappedBy = "dependsOnTask")
+    private List<TaskDependency> dependents = new ArrayList<>();
 
     public Project getProject() {
         return project;
@@ -198,11 +207,20 @@ public class Task extends BaseEntity {
         this.history = history;
     }
 
-    public User getAssignee() {
-        return assignee;
+    public List<TaskDependency> getDependencies() {
+        return dependencies;
     }
 
-    public void setAssignee(User assignee) {
-        this.assignee = assignee;
+    public void setDependencies(List<TaskDependency> dependencies) {
+        this.dependencies = dependencies;
     }
+
+    public List<TaskDependency> getDependents() {
+        return dependents;
+    }
+
+    public void setDependents(List<TaskDependency> dependents) {
+        this.dependents = dependents;
+    }
+
 }

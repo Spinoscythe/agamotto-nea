@@ -1,7 +1,6 @@
 import {
     CalendarCheckIcon,
     WarningIcon,
-    EnvelopeSimpleIcon,
     ClockIcon,
     CheckIcon,
     BellIcon,
@@ -15,14 +14,12 @@ import { cn } from '@/lib/utils'
 interface NotificationItemProps {
     notification: NotificationResponse
     onMarkRead: (id: string) => void
-    onRespondInvite?: (notification: NotificationResponse, accept: boolean) => void
     compact?: boolean
 }
 
 export function NotificationItem({
                                      notification,
                                      onMarkRead,
-                                     onRespondInvite,
                                      compact = false,
                                  }: NotificationItemProps) {
     const parsed = formatNotification(notification)
@@ -45,8 +42,6 @@ export function NotificationItem({
                         'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
                         parsed.category === 'SCHEDULE' && !parsed.mode &&
                         'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400',
-                        parsed.category === 'INVITE' &&
-                        'border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
                         parsed.category === 'TASK' &&
                         'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400',
                         parsed.category === 'GENERAL' &&
@@ -59,8 +54,6 @@ export function NotificationItem({
                         <WarningIcon className="size-5" weight="duotone" />
                     ) : parsed.category === 'SCHEDULE' ? (
                         <CalendarCheckIcon className="size-5" weight="duotone" />
-                    ) : parsed.category === 'INVITE' ? (
-                        <EnvelopeSimpleIcon className="size-5" weight="duotone" />
                     ) : parsed.category === 'TASK' ? (
                         <ClockIcon className="size-5" weight="duotone" />
                     ) : (
@@ -117,27 +110,16 @@ export function NotificationItem({
 
             {/* Action Buttons */}
             <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-                {notification.type === 'PROJECT_INVITE' && notification.inviteId && onRespondInvite ? (
-                    <>
-                        <Button size="sm" onClick={() => onRespondInvite(notification, true)}>
-                            Accept
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => onRespondInvite(notification, false)}>
-                            Decline
-                        </Button>
-                    </>
-                ) : (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onMarkRead(notification.id)}
-                        className="text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
-                        title="Mark as read"
-                    >
-                        <CheckIcon className="size-3.5 mr-1" />
-                        Mark read
-                    </Button>
-                )}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onMarkRead(notification.id)}
+                    className="text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                    title="Mark as read"
+                >
+                    <CheckIcon className="size-3.5 mr-1" />
+                    Mark read
+                </Button>
             </div>
         </div>
     )

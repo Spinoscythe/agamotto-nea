@@ -13,7 +13,6 @@ public class NotificationMapper {
 				notification.getUser().getId(),
 				notification.getTask() != null ? notification.getTask().getId() : null,
 				notification.getProject() != null ? notification.getProject().getId() : null,
-				notification.getInvite() != null ? notification.getInvite().getId() : null,
 				notification.getType(),
 				notification.getMessage(),
 				notification.getCreatedAt(),

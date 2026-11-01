@@ -43,10 +43,6 @@ public class Project extends BaseEntity {
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
-    @Comment("Rough total effort the owner expects, in hours")
-    @Column(name = "estimated_effort_hours", nullable = false)
-    private double estimatedEffortHours;
-
     @Comment("When this project row was created")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
@@ -79,14 +75,6 @@ public class Project extends BaseEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
-    }
-
-    public double getEstimatedEffortHours() {
-        return estimatedEffortHours;
-    }
-
-    public void setEstimatedEffortHours(double estimatedEffortHours) {
-        this.estimatedEffortHours = estimatedEffortHours;
     }
 
     public LocalDate getEndDate() {

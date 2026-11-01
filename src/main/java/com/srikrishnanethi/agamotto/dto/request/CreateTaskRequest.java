@@ -1,5 +1,6 @@
 package com.srikrishnanethi.agamotto.dto.request;
 
+import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Max;
@@ -23,7 +24,7 @@ public record CreateTaskRequest(
 		@NotNull @Future LocalDateTime deadline,
 		@Positive @DecimalMax("1000") double estimatedDurationHours,
 		@Min(1) @Max(5) int complexity,
-		String assigneeId) {
+		TaskStatus status) {
 
 	public CreateTaskRequest(
 			String actorUserId,

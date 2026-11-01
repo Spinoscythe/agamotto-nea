@@ -12,5 +12,6 @@ public record ScheduleBlockResponse(
 		LocalDateTime endTime,
 		BlockDecision decision,
 		String reason,
-		boolean manuallyOverridden) {
+		boolean manuallyOverridden,
+		boolean completed) {
 }

@@ -1,7 +1,7 @@
 import type { NotificationResponse } from '@/api'
 
 export interface FormattedNotification {
-    category: 'SCHEDULE' | 'INVITE' | 'TASK' | 'GENERAL'
+    category: 'SCHEDULE' | 'TASK' | 'GENERAL'
     mode?: 'SERENITY' | 'CRUNCH'
     title: string
     body: string
@@ -13,17 +13,7 @@ export function formatNotification(n: NotificationResponse): FormattedNotificati
     const raw = n.message.trim()
     const relativeTime = getRelativeTime(new Date(n.createdAt))
 
-    // 1. Project Invites
-    if (n.type === 'PROJECT_INVITE' || raw.toLowerCase().includes('invited to project')) {
-        return {
-            category: 'INVITE',
-            title: 'Project Invitation',
-            body: raw,
-            relativeTime,
-        }
-    }
-
-    // 2. Schedule Alerts
+    // 1. Schedule Alerts
     const isSchedule = n.type === 'SCHEDULE' || /schedule|serenity|crunch/i.test(raw)
     if (isSchedule) {
         const isSerenity = /serenity/i.test(raw)
@@ -51,10 +41,7 @@ export function formatNotification(n: NotificationResponse): FormattedNotificati
                 : 'Workload exceeds available time. Some tasks were set aside.'
         }
 
-        const isActionRequired = /assign (?:an )?assignee|assign team members/i.test(raw)
-        const title = isActionRequired
-            ? 'Schedule Generated · Action Required'
-            : isSerenity
+        const title = isSerenity
             ? 'Schedule Ready · Serenity Mode'
             : isCrunch
             ? 'Schedule Ready · Crunch Mode'
@@ -70,17 +57,7 @@ export function formatNotification(n: NotificationResponse): FormattedNotificati
         }
     }
 
-    // 3. Task Assignment
-    if (/you have been assigned to task/i.test(raw)) {
-        return {
-            category: 'TASK',
-            title: 'Task Assignment',
-            body: raw,
-            relativeTime,
-        }
-    }
-
-    // 4. Task Exclusions / Deadlines
+    // 2. Task Exclusions / Deadlines
     if (raw.startsWith("Task '") || n.taskId) {
         return {
             category: 'TASK',

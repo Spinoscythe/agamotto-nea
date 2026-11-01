@@ -2,13 +2,13 @@ package com.srikrishnanethi.agamotto.service.scheduler;
 
 import com.srikrishnanethi.agamotto.entities.ScheduleBlock;
 import com.srikrishnanethi.agamotto.entities.Task;
+import com.srikrishnanethi.agamotto.entities.TaskDependency;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.ScheduleMode;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -49,14 +49,17 @@ public class SchedulerEngine {
 	private final ScoringStrategy scoringStrategy;
 	private final BestFitSelector bestFitSelector;
 	private final ScheduleBuilder scheduleBuilder;
+	private final DependencyGraphService dependencyGraph;
 
 	public SchedulerEngine(
 			ScoringStrategy scoringStrategy,
 			BestFitSelector bestFitSelector,
-			ScheduleBuilder scheduleBuilder) {
+			ScheduleBuilder scheduleBuilder,
+			DependencyGraphService dependencyGraph) {
 		this.scoringStrategy = scoringStrategy;
 		this.bestFitSelector = bestFitSelector;
 		this.scheduleBuilder = scheduleBuilder;
+		this.dependencyGraph = dependencyGraph;
 	}
 
 	public ScheduleBuilder getScheduleBuilder() {
@@ -67,35 +70,58 @@ public class SchedulerEngine {
 	public ScheduleMode selectMode(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
 		Objects.requireNonNull(tasks, "tasks");
 		Objects.requireNonNull(profile, "profile");
-		double total = sumEffectiveHours(tasks);
+		double total = SchedulerEngineHelpers.sumEffectiveHours(tasks, scoringStrategy);
 		double available = availableHours(start, end, profile);
 		return total <= available + EPSILON ? ScheduleMode.SERENITY : ScheduleMode.CRUNCH;
 	}
 
-	public ScheduleResult generate(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+	/**
+	 * Generate a schedule without dependency awareness (legacy path).
+	 * Delegates to the dependency-aware version with an empty graph.
+	 */
+	public ScheduleResult generate(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile,
+			List<TaskDependency> dependencyEdges) {
 		Objects.requireNonNull(tasks, "tasks");
 		Objects.requireNonNull(profile, "profile");
-		validateRange(start, end);
-		validateProfile(profile);
-		validateTasks(tasks);
-		if (selectMode(tasks, start, end, profile) == ScheduleMode.SERENITY) {
-			return runSerenity(tasks, start, end, profile);
+		SchedulerEngineHelpers.validateRange(start, end, MAX_PLAN_DAYS);
+		SchedulerEngineHelpers.validateProfile(profile, scheduleBuilder);
+		SchedulerEngineHelpers.validateTasks(tasks, scoringStrategy);
+
+		if (dependencyEdges != null && !dependencyEdges.isEmpty()) {
+			if (dependencyGraph.hasCycle(tasks, dependencyEdges)) {
+				throw new IllegalStateException("Task dependencies contain a cycle: "
+						+ dependencyGraph.findCyclePath(tasks, dependencyEdges));
+			}
 		}
-		return runCrunch(tasks, start, end, profile);
+
+		List<TaskDependency> edges = dependencyEdges != null ? dependencyEdges : List.of();
+
+		if (selectMode(tasks, start, end, profile) == ScheduleMode.SERENITY) {
+			return runSerenity(tasks, start, end, profile, edges);
+		}
+		return runCrunch(tasks, start, end, profile, edges);
+	}
+
+	/** Legacy entry point — keeps existing callers working. */
+	public ScheduleResult generate(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+		return generate(tasks, start, end, profile, List.of());
 	}
 
 	/** Fit workload: place every task by score, day by day. */
-	public ScheduleResult runSerenity(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+	public ScheduleResult runSerenity(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile,
+			List<TaskDependency> dependencyEdges) {
 		Objects.requireNonNull(tasks, "tasks");
-		validateRange(start, end);
+		SchedulerEngineHelpers.validateRange(start, end, MAX_PLAN_DAYS);
 		Objects.requireNonNull(profile, "profile");
-		validateProfile(profile);
-		validateTasks(tasks);
+		SchedulerEngineHelpers.validateProfile(profile, scheduleBuilder);
+		SchedulerEngineHelpers.validateTasks(tasks, scoringStrategy);
 
-		List<ScheduleBlock> blocks = scheduleBuilder.buildSchedule(tasks, start, end, profile);
+		List<ScheduleBlock> blocks = scheduleBuilder.buildSchedule(tasks, start, end, profile,
+				null, null, dependencyEdges);
 		String summary = "Serenity mode: workload fits available hours ("
-				+ formatHours(sumEffectiveHours(tasks)) + "h <= "
-				+ formatHours(availableHours(start, end, profile)) + "h). "
+				+ SchedulerEngineHelpers.formatHours(
+						SchedulerEngineHelpers.sumEffectiveHours(tasks, scoringStrategy)) + "h <= "
+				+ SchedulerEngineHelpers.formatHours(availableHours(start, end, profile)) + "h). "
 				+ "Tasks ordered by score (priority, deadline urgency, duration) with deadline tie-break.";
 		return new ScheduleResult(ScheduleMode.SERENITY, summary, List.copyOf(blocks));
 	}
@@ -104,12 +130,13 @@ public class SchedulerEngine {
 	 * Overload: order by earliest deadline, drop lower-priority / shorter tasks until the rest
 	 * fits, place survivors, mark the rest EXCLUDED.
 	 */
-	public ScheduleResult runCrunch(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile) {
+	public ScheduleResult runCrunch(List<Task> tasks, LocalDate start, LocalDate end, UserProfile profile,
+			List<TaskDependency> dependencyEdges) {
 		Objects.requireNonNull(tasks, "tasks");
-		validateRange(start, end);
+		SchedulerEngineHelpers.validateRange(start, end, MAX_PLAN_DAYS);
 		Objects.requireNonNull(profile, "profile");
-		validateProfile(profile);
-		validateTasks(tasks);
+		SchedulerEngineHelpers.validateProfile(profile, scheduleBuilder);
+		SchedulerEngineHelpers.validateTasks(tasks, scoringStrategy);
 
 		// Copy-then-sort: do not reorder the JPA list the service passed in.
 		List<Task> byDeadline = new ArrayList<>(tasks);
@@ -119,25 +146,31 @@ public class SchedulerEngine {
 
 		double available = availableHours(start, end, profile);
 		if (available <= EPSILON) {
-			return emptyWindowResult(tasks, profile);
+			return SchedulerEngineHelpers.emptyWindowResult(tasks, profile);
 		}
 
 		BestFitResult fit = bestFit(byDeadline, available);
 
 		// Mutable copy of greedy output so EXCLUDED rows can be appended.
-		List<ScheduleBlock> blocks = new ArrayList<>(scheduleBuilder.buildSchedule(fit.remaining(), start, end, profile));
+		List<ScheduleBlock> blocks = new ArrayList<>(scheduleBuilder.buildSchedule(
+				fit.remaining(), start, end, profile, null, null, dependencyEdges));
 		for (Task excluded : fit.excluded()) {
-			blocks.add(createBlock(
+			blocks.add(SchedulerEngineHelpers.createBlock(
 					excluded,
 					null,
 					null,
 					BlockDecision.EXCLUDED,
-					buildExcludedReason(excluded, available, sumEffectiveHours(tasks))));
+					SchedulerEngineHelpers.buildExcludedReason(
+							excluded,
+							available,
+							SchedulerEngineHelpers.sumEffectiveHours(tasks, scoringStrategy),
+							scoringStrategy)));
 		}
 
 		String summary = "Crunch mode: workload ("
-				+ formatHours(sumEffectiveHours(tasks)) + "h) exceeds available hours ("
-				+ formatHours(available) + "h). "
+				+ SchedulerEngineHelpers.formatHours(
+						SchedulerEngineHelpers.sumEffectiveHours(tasks, scoringStrategy)) + "h) exceeds available hours ("
+				+ SchedulerEngineHelpers.formatHours(available) + "h). "
 				+ "Best-fit excluded " + fit.excluded().size()
 				+ " lower-priority / shorter task(s); survivors placed by score.";
 		return new ScheduleResult(ScheduleMode.CRUNCH, summary, List.copyOf(blocks));
@@ -148,12 +181,12 @@ public class SchedulerEngine {
 	}
 
 	public double availableHours(LocalDate start, LocalDate end, UserProfile profile) {
-		validateRange(start, end);
+		SchedulerEngineHelpers.validateRange(start, end, MAX_PLAN_DAYS);
 		Objects.requireNonNull(profile, "profile");
 		long days = 0;
 		LocalDate day = start;
 		while (!day.isAfter(end)) {
-			if (profile.isIncludeWeekends() || !isWeekend(day)) {
+			if (profile.worksOnWeekends() || !SchedulerEngineHelpers.isWeekend(day)) {
 				days++;
 			}
 			if (day.equals(LocalDate.MAX)) {
@@ -165,7 +198,7 @@ public class SchedulerEngine {
 	}
 
 	public double effectiveDurationHours(Task task) {
-		return scoringStrategy.getEffectiveDurationHours(task);
+		return scoringStrategy.getEffectiveDurationHoursFor(task);
 	}
 
 	public double deadlineUrgency(Task task, LocalDate asOf) {
@@ -174,107 +207,5 @@ public class SchedulerEngine {
 
 	public double workingHoursPerDay(UserProfile profile) {
 		return scheduleBuilder.workingHoursPerDay(profile);
-	}
-
-	private static boolean isWeekend(LocalDate day) {
-		return day.getDayOfWeek().getValue() >= 6;
-	}
-
-	private double sumEffectiveHours(List<Task> tasks) {
-		double sum = 0.0;
-		for (Task task : tasks) {
-			sum += scoringStrategy.getEffectiveDurationHours(task);
-		}
-		return sum;
-	}
-
-	private ScheduleBlock createBlock(
-			Task task,
-			java.time.LocalDateTime start,
-			java.time.LocalDateTime end,
-			BlockDecision decision,
-			String reason) {
-		ScheduleBlock block = new ScheduleBlock();
-		block.setTask(task);
-		block.setStartTime(start);
-		block.setEndTime(end);
-		block.setDecision(decision);
-		block.setReason(ScheduleBuilder.clampReason(reason));
-		block.setManuallyOverridden(false);
-		return block;
-	}
-
-	private String buildExcludedReason(Task task, double availableHours, double totalHours) {
-		return "Excluded by best-fit: priority=" + task.getPriority()
-				+ ", duration=" + formatHours(scoringStrategy.getEffectiveDurationHours(task)) + "h"
-				+ ", deadline urgency relative to overflow"
-				+ " (total=" + formatHours(totalHours) + "h > available="
-				+ formatHours(availableHours) + "h). Lower priority / shorter tasks removed first.";
-	}
-
-	private ScheduleResult emptyWindowResult(List<Task> tasks, UserProfile profile) {
-		List<ScheduleBlock> blocks = new ArrayList<>();
-		String reason = profile.isIncludeWeekends()
-				? "No working days in the selected range."
-				: "No working days in the selected range (weekends are excluded).";
-		for (Task task : tasks) {
-			blocks.add(createBlock(task, null, null, BlockDecision.EXCLUDED, reason));
-		}
-		String summary = reason + " All " + tasks.size() + " task(s) were left unplaced.";
-		return new ScheduleResult(ScheduleMode.CRUNCH, summary, List.copyOf(blocks));
-	}
-
-	private void validateRange(LocalDate start, LocalDate end) {
-		Objects.requireNonNull(start, "start");
-		Objects.requireNonNull(end, "end");
-		if (end.isBefore(start)) {
-			throw new IllegalArgumentException("end must be on or after start");
-		}
-		if (start.equals(LocalDate.MAX) || end.equals(LocalDate.MAX)) {
-			throw new IllegalArgumentException("plan dates must be real calendar days");
-		}
-		long inclusiveDays = ChronoUnit.DAYS.between(start, end) + 1;
-		if (inclusiveDays > MAX_PLAN_DAYS) {
-			throw new IllegalArgumentException(
-					"plan range must be at most " + MAX_PLAN_DAYS + " days");
-		}
-	}
-
-	private void validateProfile(UserProfile profile) {
-		scheduleBuilder.workingHoursPerDay(profile);
-		if (!Double.isFinite(profile.getWeightPriority())
-				|| !Double.isFinite(profile.getWeightUrgency())
-				|| !Double.isFinite(profile.getWeightDuration())) {
-			throw new IllegalArgumentException("score weights must be finite numbers");
-		}
-	}
-
-	private void validateTasks(List<Task> tasks) {
-		for (int i = 0; i < tasks.size(); i++) {
-			Task task = tasks.get(i);
-			if (task == null) {
-				throw new IllegalArgumentException("tasks must not contain null (index " + i + ")");
-			}
-			if (task.getDeadline() == null) {
-				throw new IllegalArgumentException("Task '" + taskLabel(task) + "' is missing a deadline");
-			}
-			try {
-				scoringStrategy.getEffectiveDurationHours(task);
-			} catch (IllegalArgumentException ex) {
-				throw new IllegalArgumentException(
-						"Task '" + taskLabel(task) + "' has invalid duration: " + ex.getMessage(), ex);
-			}
-		}
-	}
-
-	private static String taskLabel(Task task) {
-		if (task.getTitle() != null && !task.getTitle().isBlank()) {
-			return task.getTitle();
-		}
-		return task.getId() != null ? task.getId() : "untitled";
-	}
-
-	private static String formatHours(double hours) {
-		return String.format(java.util.Locale.ROOT, "%.2f", hours);
 	}
 }

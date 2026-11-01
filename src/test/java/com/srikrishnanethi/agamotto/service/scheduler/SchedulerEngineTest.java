@@ -2,9 +2,11 @@ package com.srikrishnanethi.agamotto.service.scheduler;
 
 import com.srikrishnanethi.agamotto.entities.ScheduleBlock;
 import com.srikrishnanethi.agamotto.entities.Task;
+import com.srikrishnanethi.agamotto.entities.TaskDependency;
 import com.srikrishnanethi.agamotto.entities.UserProfile;
 import com.srikrishnanethi.agamotto.entities.enums.BlockDecision;
 import com.srikrishnanethi.agamotto.entities.enums.ScheduleMode;
+import com.srikrishnanethi.agamotto.repositories.TaskDependencyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,17 +21,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 class SchedulerEngineTest {
 
 	private SchedulerEngine engine;
 	private ScheduleBuilder scheduleBuilder;
+	private DependencyGraphService dependencyGraph;
 
 	@BeforeEach
 	void setUp() {
 		ScoringStrategy scoring = new ScoringStrategy();
-		scheduleBuilder = new ScheduleBuilder(scoring);
-		engine = new SchedulerEngine(scoring, new BestFitSelector(scoring), scheduleBuilder);
+		TaskDependencyRepository depRepo = mock(TaskDependencyRepository.class);
+		dependencyGraph = new DependencyGraphService(depRepo);
+		scheduleBuilder = new ScheduleBuilder(scoring, dependencyGraph);
+		engine = new SchedulerEngine(scoring, new BestFitSelector(scoring), scheduleBuilder, dependencyGraph);
 	}
 
 	@Test
@@ -213,7 +219,7 @@ class SchedulerEngineTest {
 	@Test
 	void emptyWeekendOnlyWindowDoesNotThrow() {
 		UserProfile profile = weekdayNineToFive();
-		profile.setIncludeWeekends(false);
+		profile.setWorksOnWeekends(false);
 		LocalDate saturday = LocalDate.of(2026, 8, 15);
 		LocalDate sunday = LocalDate.of(2026, 8, 16);
 		List<Task> tasks = List.of(
@@ -418,7 +424,7 @@ class SchedulerEngineTest {
 		UserProfile profile = new UserProfile();
 		profile.setPreferredStart(LocalTime.of(9, 0));
 		profile.setPreferredEnd(LocalTime.of(17, 0));
-		profile.setIncludeWeekends(false);
+		profile.setWorksOnWeekends(false);
 		profile.setWeightPriority(1.0);
 		profile.setWeightUrgency(1.0);
 		profile.setWeightDuration(1.0);
@@ -516,7 +522,7 @@ class SchedulerEngineTest {
 		List<ScheduleBlock> existing = List.of(completed, missed);
 
 		// Rearrange starting from the end of the unattended session (Tuesday 17:00)
-		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(existing, missed, end, profile);
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(existing, missed, end, profile, List.of());
 
 		// Resumption moves to Wednesday Aug 12 (deadline day!).
 		// Available before deadline (09:00 - 11:00) is only 2 hours.
@@ -560,7 +566,7 @@ class SchedulerEngineTest {
 		missed.setEndTime(LocalDateTime.of(2026, 8, 11, 17, 0));
 		missed.setDecision(BlockDecision.SCHEDULED);
 
-		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile);
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile, List.of());
 
 		assertTrue(scheduleBuilder.hasDeadlineApproachedError(result));
 		ScheduleBlock delayed = result.stream()
@@ -588,7 +594,7 @@ class SchedulerEngineTest {
 		missed.setEndTime(LocalDateTime.of(2026, 8, 10, 11, 0));
 		missed.setDecision(BlockDecision.SCHEDULED);
 
-		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile);
+		List<ScheduleBlock> result = scheduleBuilder.rearrangeForUnattendedSession(List.of(missed), missed, end, profile, List.of());
 
 		// Should successfully reschedule without deadline-approached error
 		assertFalse(scheduleBuilder.hasDeadlineApproachedError(result));

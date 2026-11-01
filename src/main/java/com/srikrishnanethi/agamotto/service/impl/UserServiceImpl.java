@@ -109,7 +109,7 @@ public class UserServiceImpl implements UserService {
             profile.setPreferredEnd(request.preferredEnd());
         }
         if (request.includeWeekends() != null) {
-            profile.setIncludeWeekends(request.includeWeekends());
+            profile.setWorksOnWeekends(request.includeWeekends());
         }
         if (request.weightPriority() != null) {
             profile.setWeightPriority(request.weightPriority());

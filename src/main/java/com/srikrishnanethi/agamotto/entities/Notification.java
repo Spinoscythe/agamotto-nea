@@ -18,7 +18,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "notifications")
-@Comment("Unread/read alerts for schedules, deadlines, and project invites")
+@Comment("Unread/read alerts for schedules and deadlines")
 public class Notification extends BaseEntity {
 
     @Comment("Recipient (FK users.user_id)")
@@ -36,12 +36,7 @@ public class Notification extends BaseEntity {
     @JoinColumn(name = "project_id")
     private Project project;
 
-    @Comment("Related invite when type is PROJECT_INVITE")
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "invite_id")
-    private ProjectInvite invite;
-
-    @Comment("GENERAL, DEADLINE, SCHEDULE, or PROJECT_INVITE")
+    @Comment("GENERAL, DEADLINE, or SCHEDULE")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private NotificationType type = NotificationType.GENERAL;
@@ -84,14 +79,6 @@ public class Notification extends BaseEntity {
 
     public void setProject(Project project) {
         this.project = project;
-    }
-
-    public ProjectInvite getInvite() {
-        return invite;
-    }
-
-    public void setInvite(ProjectInvite invite) {
-        this.invite = invite;
     }
 
     public NotificationType getType() {

@@ -34,7 +34,7 @@ public class UserProfile extends BaseEntity {
 
     @Comment("Whether Saturday and Sunday are available for placement")
     @Column(name = "include_weekends", nullable = false)
-    private boolean includeWeekends = true;
+    private boolean worksOnWeekends = true;
 
     @Comment("Weight w_p: how strongly task priority affects scoreTask")
     @Column(name = "weight_priority", nullable = false)
@@ -76,12 +76,12 @@ public class UserProfile extends BaseEntity {
         this.preferredEnd = preferredEnd;
     }
 
-    public boolean isIncludeWeekends() {
-        return includeWeekends;
+    public boolean worksOnWeekends() {
+        return worksOnWeekends;
     }
 
-    public void setIncludeWeekends(boolean includeWeekends) {
-        this.includeWeekends = includeWeekends;
+    public void setWorksOnWeekends(boolean worksOnWeekends) {
+        this.worksOnWeekends = worksOnWeekends;
     }
 
     public double getWeightPriority() {

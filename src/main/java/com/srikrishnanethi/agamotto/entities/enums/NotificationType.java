@@ -9,7 +9,5 @@ public enum NotificationType {
     /** Deadline reminder (reserved). */
     DEADLINE,
     /** Schedule was generated or a task was delayed/excluded. */
-    SCHEDULE,
-    /** Invitation to join a project. */
-    PROJECT_INVITE
+    SCHEDULE
 }

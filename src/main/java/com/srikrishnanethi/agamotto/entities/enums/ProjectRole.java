@@ -1,7 +1,8 @@
 package com.srikrishnanethi.agamotto.entities.enums;
 
 /**
- * Collaboration role stored in {@code project_members.role} and {@code project_invites.role}.
+ * Legacy collaboration role stored in {@code project_members.role} and
+ * {@code project_invites.role}. Retained for schema compatibility only.
  */
 public enum ProjectRole {
     /** Created the project; can invite, remove members, and delete. */

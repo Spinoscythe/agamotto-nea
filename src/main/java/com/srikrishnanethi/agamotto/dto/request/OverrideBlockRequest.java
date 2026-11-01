@@ -9,5 +9,6 @@ public record OverrideBlockRequest(
 		LocalDateTime startTime,
 		LocalDateTime endTime,
 		BlockDecision decision,
-		@Size(max = 1000) String reason) {
+		@Size(max = 1000) String reason,
+		Boolean completed) {
 }

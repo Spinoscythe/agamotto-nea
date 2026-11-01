@@ -11,7 +11,20 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Best-fit exclusion: drop lower-priority / shorter tasks until overflow is covered.
+ * Best-fit exclusion: drop lower-priority / longer tasks until overflow is covered.
+ *
+ * <h2>Algorithm (NEA §2.11 — Greedy Exclusion)</h2>
+ * <ol>
+ *   <li>Calculate total workload and overflow beyond available capacity.</li>
+ *   <li>Sort candidate tasks by ascending priority (lowest dropped first).</li>
+ *   <li>Within the same priority, sort by descending estimated duration
+ *       (longer tasks dropped first — they free more hours per exclusion).</li>
+ *   <li>Exclude tasks in that order until the excluded workload covers the overflow.</li>
+ *   <li>If every task was excluded but the window still has hours, restore the
+ *       highest-priority excluded task so greedy placement can fill a partial schedule.</li>
+ * </ol>
+ *
+ * <p>This is a greedy heuristic, not a guaranteed globally optimal 0/1 knapsack solution.
  *
  * <h2>Why these data structures</h2>
  * <ul>
@@ -39,7 +52,7 @@ public class BestFitSelector {
     }
 
     /**
-     * Sort by priority then duration (lowest first), drop tasks until overflow is covered.
+     * Sort by ascending priority then descending duration, drop tasks until overflow is covered.
      * When there is no overflow, remaining is the full input and excluded is empty.
      */
     public BestFitResult select(List<Task> tasks, double availableHours) {
@@ -56,9 +69,13 @@ public class BestFitSelector {
 
         // Mutable copy so sort does not reorder the engine's input list.
         List<Task> candidates = new ArrayList<>(tasks);
+        // Sort by ascending priority (lowest priority excluded first),
+        // then descending duration within same priority (longer tasks excluded first
+        // because they free more hours per exclusion), then by ID for determinism.
         candidates.sort(Comparator
                 .comparingInt(Task::getPriority)
-                .thenComparingDouble(scoringStrategy::getEffectiveDurationHours)
+                .thenComparing(Comparator.comparingDouble(
+                        scoringStrategy::getEffectiveDurationHoursFor).reversed())
                 .thenComparing(t -> t.getId() == null ? "" : t.getId()));
 
         List<Task> excluded = new ArrayList<>();
@@ -71,7 +88,7 @@ public class BestFitSelector {
             }
             excluded.add(task);
             excludedSet.add(task);
-            removedHours += scoringStrategy.getEffectiveDurationHours(task);
+            removedHours += scoringStrategy.getEffectiveDurationHoursFor(task);
         }
 
         // Rebuild remaining in the caller's order (not the cheap-first sort order).
@@ -87,7 +104,7 @@ public class BestFitSelector {
         if (remaining.isEmpty() && availableHours > EPSILON && !excluded.isEmpty()) {
             Task restore = excluded.stream()
                     .max(Comparator.comparingInt(Task::getPriority)
-                            .thenComparingDouble(scoringStrategy::getEffectiveDurationHours)
+                            .thenComparingDouble(scoringStrategy::getEffectiveDurationHoursFor)
                             .thenComparing(t -> t.getId() == null ? "" : t.getId()))
                     .orElse(null);
             // ArrayList.remove is O(n); n is the handful of dropped tasks, not a concern.
@@ -101,8 +118,9 @@ public class BestFitSelector {
     private double sumEffectiveHours(List<Task> tasks) {
         double sum = 0.0;
         for (Task task : tasks) {
-            sum += scoringStrategy.getEffectiveDurationHours(task);
+            sum += scoringStrategy.getEffectiveDurationHoursFor(task);
         }
         return sum;
     }
 }
+

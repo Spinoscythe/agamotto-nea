@@ -11,8 +11,7 @@ public interface ProjectService {
             String name,
             String description,
             LocalDate startDate,
-            LocalDate endDate,
-            double estimatedEffortHours);
+            LocalDate endDate);
 
     Project getById(String projectId);
 
@@ -23,8 +22,7 @@ public interface ProjectService {
             String name,
             String description,
             LocalDate startDate,
-            LocalDate endDate,
-            Double estimatedEffortHours);
+            LocalDate endDate);
 
     void delete(String projectId);
 }

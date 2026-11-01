@@ -27,7 +27,7 @@ public class UserMapper {
 		UserProfile profile = new UserProfile();
 		profile.setPreferredStart(LocalTime.of(9, 0));
 		profile.setPreferredEnd(LocalTime.of(17, 0));
-		profile.setIncludeWeekends(true);
+		profile.setWorksOnWeekends(true);
 		profile.setWeightPriority(1.0);
 		profile.setWeightUrgency(1.0);
 		profile.setWeightDuration(1.0);
@@ -51,7 +51,7 @@ public class UserMapper {
 				profile.getId(),
 				profile.getPreferredStart(),
 				profile.getPreferredEnd(),
-				profile.isIncludeWeekends(),
+				profile.worksOnWeekends(),
 				profile.getWeightPriority(),
 				profile.getWeightUrgency(),
 				profile.getWeightDuration(),

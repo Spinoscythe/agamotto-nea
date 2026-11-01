@@ -2,6 +2,7 @@ package com.srikrishnanethi.agamotto.repositories;
 
 import com.srikrishnanethi.agamotto.entities.ScheduleBlock;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -55,4 +56,30 @@ public interface ScheduleBlockRepository extends JpaRepository<ScheduleBlock, St
             @Param("projectId") String projectId,
             @Param("from") Instant from,
             @Param("to") Instant to);
+
+    /**
+     * Remove every block on a plan owned by the project. Called first when a
+     * project is deleted so the {@code schedule_plans} FK does not block it.
+     */
+    @Modifying
+    @Query("""
+            delete from ScheduleBlock b
+            where b.schedule.id in (
+                select s.id from SchedulePlan s where s.project.id = :projectId
+            )
+            """)
+    void deleteByProjectId(@Param("projectId") String projectId);
+
+    /**
+     * Remove every block that references a task in the project, regardless of
+     * which plan it belongs to. Called before the project's tasks are deleted.
+     */
+    @Modifying
+    @Query("""
+            delete from ScheduleBlock b
+            where b.task.id in (
+                select t.id from Task t where t.project.id = :projectId
+            )
+            """)
+    void deleteByTaskProjectId(@Param("projectId") String projectId);
 }

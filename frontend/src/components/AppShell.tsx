@@ -22,6 +22,7 @@ const primaryLinks = [
   { to: '/dashboard', label: 'Overview' },
   { to: '/projects', label: 'Projects' },
   { to: '/generate', label: 'Generate' },
+  { to: '/leaves', label: 'Leaves & Breaks' },
   { to: '/history', label: 'History' },
   { to: '/notifications', label: 'Notifications' },
 ]

@@ -6,9 +6,8 @@ export type PlanStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type BlockDecision = 'SCHEDULED' | 'DELAYED' | 'EXCLUDED'
 export type ReportPeriod = 'DAILY' | 'WEEKLY' | 'MONTHLY'
 export type ChangeType = 'CREATED' | 'EDITED' | 'DELETED' | 'STATUS_CHANGED'
-export type ProjectRole = 'OWNER' | 'EDITOR' | 'VIEWER'
-export type InviteStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED'
-export type NotificationType = 'GENERAL' | 'DEADLINE' | 'SCHEDULE' | 'PROJECT_INVITE'
+export type NotificationType = 'GENERAL' | 'DEADLINE' | 'SCHEDULE'
+export type LeaveType = 'VACATION' | 'SICK_LEAVE' | 'SHORT_BREAK' | 'PERSONAL' | 'HOLIDAY'
 
 export interface UserProfileResponse {
   id: string
@@ -42,7 +41,6 @@ export interface ProjectResponse {
   description: string | null
   startDate: string
   endDate: string
-  estimatedEffortHours: number
   createdAt: string
 }
 
@@ -60,9 +58,6 @@ export interface TaskResponse {
   status: TaskStatus
   createdAt: string
   updatedAt: string
-  assigneeId?: string | null
-  assigneeName?: string | null
-  assigneeEmail?: string | null
 }
 
 export interface ScheduleBlockResponse {
@@ -74,6 +69,7 @@ export interface ScheduleBlockResponse {
   decision: BlockDecision
   reason: string | null
   manuallyOverridden: boolean
+  completed: boolean
 }
 
 export interface SchedulePlanResponse {
@@ -106,35 +102,11 @@ export interface NotificationResponse {
   userId: string
   taskId: string | null
   projectId: string | null
-  inviteId: string | null
   type: NotificationType | null
   message: string
   createdAt: string
   sentAt: string | null
   read: boolean
-}
-
-export interface ProjectMemberResponse {
-  id: string
-  projectId: string
-  userId: string
-  email: string
-  fullName: string
-  role: ProjectRole
-  joinedAt: string
-}
-
-export interface ProjectInviteResponse {
-  id: string
-  projectId: string
-  projectName: string
-  inviterId: string
-  inviterName: string
-  inviteeEmail: string
-  role: ProjectRole
-  status: InviteStatus
-  createdAt: string
-  resolvedAt: string | null
 }
 
 export interface RescheduleResponse {
@@ -178,7 +150,6 @@ export interface CreateProjectRequest {
   description?: string
   startDate: string
   endDate: string
-  estimatedEffortHours: number
 }
 
 export interface CreateTaskRequest {
@@ -190,7 +161,7 @@ export interface CreateTaskRequest {
   deadline: string
   estimatedDurationHours: number
   complexity: number
-  assigneeId?: string | null
+  status?: TaskStatus
 }
 
 export interface UpdateTaskRequest {
@@ -204,7 +175,6 @@ export interface UpdateTaskRequest {
   correctedDurationHours?: number
   complexity?: number
   status?: TaskStatus
-  assigneeId?: string | null
 }
 
 export interface GenerateScheduleRequest {
@@ -217,10 +187,39 @@ export interface OverrideBlockRequest {
   endTime?: string | null
   decision?: BlockDecision | null
   reason?: string | null
+  completed?: boolean | null
 }
 
 export interface RescheduleBlockRequest {
   startTime: string
   endTime: string
+  reason?: string | null
+}
+
+export interface LeaveResponse {
+  id: string
+  userId: string | null
+  title: string
+  type: LeaveType
+  startTime: string
+  endTime: string
+  reason: string | null
+  createdAt: string
+  isGlobal: boolean
+}
+
+export interface CreateLeaveRequest {
+  title: string
+  type: LeaveType
+  startTime: string
+  endTime: string
+  reason?: string | null
+}
+
+export interface UpdateLeaveRequest {
+  title?: string
+  type?: LeaveType
+  startTime?: string
+  endTime?: string
   reason?: string | null
 }

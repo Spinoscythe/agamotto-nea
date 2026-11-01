@@ -6,22 +6,18 @@ import com.srikrishnanethi.agamotto.entities.TaskHistory;
 import com.srikrishnanethi.agamotto.entities.User;
 import com.srikrishnanethi.agamotto.entities.enums.ChangeType;
 import com.srikrishnanethi.agamotto.entities.enums.TaskStatus;
-import com.srikrishnanethi.agamotto.exception.ForbiddenException;
 import com.srikrishnanethi.agamotto.exception.ResourceNotFoundException;
 import com.srikrishnanethi.agamotto.repositories.ProjectRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskHistoryRepository;
 import com.srikrishnanethi.agamotto.repositories.TaskRepository;
 import com.srikrishnanethi.agamotto.repositories.UserRepository;
-import com.srikrishnanethi.agamotto.service.NotificationService;
 import com.srikrishnanethi.agamotto.service.TaskService;
 import org.hibernate.Hibernate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -32,26 +28,19 @@ public class TaskServiceImpl implements TaskService {
     private final ProjectRepository projectRepository;
     private final TaskHistoryRepository taskHistoryRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
-
-    @Autowired
-    public TaskServiceImpl(TaskRepository taskRepository,
-                           ProjectRepository projectRepository,
-                           TaskHistoryRepository taskHistoryRepository,
-                           UserRepository userRepository,
-                           @Autowired(required = false) NotificationService notificationService) {
-        this.taskRepository = taskRepository;
-        this.projectRepository = projectRepository;
-        this.taskHistoryRepository = taskHistoryRepository;
-        this.userRepository = userRepository;
-        this.notificationService = notificationService;
-    }
+    private final TaskUpdateApplier taskUpdateApplier;
+    private final TaskHistoryRecorder taskHistoryRecorder;
 
     public TaskServiceImpl(TaskRepository taskRepository,
                            ProjectRepository projectRepository,
                            TaskHistoryRepository taskHistoryRepository,
                            UserRepository userRepository) {
-        this(taskRepository, projectRepository, taskHistoryRepository, userRepository, null);
+        this.taskRepository = taskRepository;
+        this.projectRepository = projectRepository;
+        this.taskHistoryRepository = taskHistoryRepository;
+        this.userRepository = userRepository;
+        this.taskUpdateApplier = new TaskUpdateApplier(userRepository);
+        this.taskHistoryRecorder = new TaskHistoryRecorder(taskHistoryRepository);
     }
 
     @Override
@@ -65,7 +54,7 @@ public class TaskServiceImpl implements TaskService {
                        LocalDateTime deadline,
                        double estimatedDurationHours,
                        int complexity,
-                       String assigneeId) {
+                       TaskStatus status) {
         Objects.requireNonNull(projectId, "projectId");
         Objects.requireNonNull(userId, "userId");
         Objects.requireNonNull(title, "title");
@@ -74,6 +63,7 @@ public class TaskServiceImpl implements TaskService {
 
         Project project = this.projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + projectId));
+        TaskDeadlineValidator.validateWithinProject(project, deadline);
 
         Task task = new Task();
         task.setProject(project);
@@ -84,34 +74,14 @@ public class TaskServiceImpl implements TaskService {
         task.setDeadline(deadline);
         task.setEstimatedDurationHours(estimatedDurationHours);
         task.setComplexity(complexity);
-        task.setStatus(TaskStatus.PENDING);
+        task.setStatus(status != null ? status : TaskStatus.PENDING);
         task.setCreatedAt(Instant.now());
         task.setUpdatedAt(Instant.now());
 
-        // Only project admin (creator) can assign tasks
-        if (assigneeId != null && !assigneeId.isBlank() && !"unassigned".equalsIgnoreCase(assigneeId.trim())) {
-            boolean isOwner = project.getOwner() == null || userId.equals(project.getOwner().getId());
-            if (!isOwner) {
-                throw new ForbiddenException(
-                        "Only the project admin (the creator of the project) can decide the assignee for tasks.");
-            }
-            User assignee = requireUser(assigneeId.trim());
-            task.setAssignee(assignee);
-        }
-
         task = this.taskRepository.save(task);
         User actor = requireUser(userId);
-        String historyDesc = task.getAssignee() != null
-                ? "Created task '" + task.getTitle() + "' (assigned to " + task.getAssignee().getFullName() + ")"
-                : "Created task '" + task.getTitle() + "'";
-        writeHistory(task, actor, ChangeType.CREATED, historyDesc);
-
-        // Notify assignee of assignment
-        if (task.getAssignee() != null && notificationService != null) {
-            String projName = project.getName() != null ? project.getName() : "Project";
-            notificationService.notifyUser(task.getAssignee(), task,
-                    "You have been assigned to task '" + task.getTitle() + "' in project '" + projName + "'.");
-        }
+        taskHistoryRecorder.record(task, actor, ChangeType.CREATED,
+                "Created task '" + task.getTitle() + "'");
 
         initializeProject(task);
         return task;
@@ -145,101 +115,24 @@ public class TaskServiceImpl implements TaskService {
                        Double estimatedDurationHours,
                        Double correctedDurationHours,
                        Integer complexity,
-                       TaskStatus status,
-                       String assigneeId) {
+                       TaskStatus status) {
         Task task = this.getById(taskId);
-        List<String> fieldChanges = new ArrayList<>();
-        boolean statusChanged = false;
-        TaskStatus previousStatus = task.getStatus();
-        User user = requireUser(actorUserId);
-        User newlyAssignedUser = null;
-
-        if (title != null && !title.isBlank() && !title.trim().equals(task.getTitle())) {
-            fieldChanges.add("title: '" + task.getTitle() + "' -> '" + title.trim() + "'");
-            task.setTitle(title.trim());
-        }
-        if (description != null && !Objects.equals(description, task.getDescription())) {
-            fieldChanges.add("description updated");
-            task.setDescription(description);
-        }
-        if (category != null && !category.isBlank() && !category.trim().equals(task.getCategory())) {
-            fieldChanges.add("category: '" + task.getCategory() + "' -> '" + category.trim() + "'");
-            task.setCategory(category.trim());
-        }
-        if (priority != null && priority != task.getPriority()) {
-            fieldChanges.add("priority: " + task.getPriority() + " -> " + priority);
-            task.setPriority(priority);
-        }
-        if (deadline != null && !deadline.equals(task.getDeadline())) {
-            fieldChanges.add("deadline: " + task.getDeadline() + " -> " + deadline);
-            task.setDeadline(deadline);
-        }
-        if (estimatedDurationHours != null
-                && Double.compare(estimatedDurationHours, task.getEstimatedDurationHours()) != 0) {
-            fieldChanges.add("estimatedDurationHours: " + task.getEstimatedDurationHours()
-                    + " -> " + estimatedDurationHours);
-            task.setEstimatedDurationHours(estimatedDurationHours);
-        }
-        if (correctedDurationHours != null
-                && !Objects.equals(correctedDurationHours, task.getCorrectedDurationHours())) {
-            fieldChanges.add("correctedDurationHours: " + task.getCorrectedDurationHours()
-                    + " -> " + correctedDurationHours);
-            task.setCorrectedDurationHours(correctedDurationHours);
-        }
-        if (complexity != null && complexity != task.getComplexity()) {
-            fieldChanges.add("complexity: " + task.getComplexity() + " -> " + complexity);
-            task.setComplexity(complexity);
-        }
-        if (status != null && status != task.getStatus()) {
-            statusChanged = true;
-            task.setStatus(status);
-        }
-        if (assigneeId != null) {
-            String trimmed = assigneeId.trim();
-
-            // Only project admin (creator) can reassign tasks
-            boolean isOwner = task.getProject() == null || task.getProject().getOwner() == null
-                    || actorUserId.equals(task.getProject().getOwner().getId());
-            if (!isOwner) {
-                throw new ForbiddenException(
-                        "Only the project admin (the creator of the project) can decide or change the assignee for tasks.");
-            }
-
-            if (trimmed.isEmpty() || "unassigned".equalsIgnoreCase(trimmed)) {
-                if (task.getAssignee() != null) {
-                    fieldChanges.add("assignee: '" + task.getAssignee().getFullName() + "' -> unassigned");
-                    task.setAssignee(null);
-                }
-            } else if (task.getAssignee() == null || !trimmed.equals(task.getAssignee().getId())) {
-                User newAssignee = requireUser(trimmed);
-                String prevName = task.getAssignee() != null ? task.getAssignee().getFullName() : "unassigned";
-                fieldChanges.add("assignee: '" + prevName + "' -> '" + newAssignee.getFullName() + "'");
-                task.setAssignee(newAssignee);
-                newlyAssignedUser = newAssignee;
-            }
-        }
+        TaskUpdateApplier.UpdateResult result = taskUpdateApplier.apply(
+                task, actorUserId, title, description, category, priority, deadline,
+                estimatedDurationHours, correctedDurationHours, complexity, status);
 
         task.setUpdatedAt(Instant.now());
         task = taskRepository.save(task);
 
-        // Notify newly assigned user
-        if (newlyAssignedUser != null && notificationService != null) {
-            String projName = task.getProject() != null && task.getProject().getName() != null
-                    ? task.getProject().getName()
-                    : "Project";
-            notificationService.notifyUser(newlyAssignedUser, task,
-                    "You have been assigned to task '" + task.getTitle() + "' in project '" + projName + "'.");
-        }
-
-        if (statusChanged) {
-            writeHistory(task, user, ChangeType.STATUS_CHANGED,
-                    truncate("status: " + previousStatus + " -> " + task.getStatus()
-                            + (fieldChanges.isEmpty() ? "" : "; " + String.join("; ", fieldChanges))));
+        if (result.statusChanged()) {
+            taskHistoryRecorder.record(task, result.actor(), ChangeType.STATUS_CHANGED,
+                    "status: " + result.previousStatus() + " -> " + task.getStatus()
+                            + (result.fieldChanges().isEmpty() ? "" : "; " + String.join("; ", result.fieldChanges())));
         } else {
-            String summary = fieldChanges.isEmpty()
+            String summary = result.fieldChanges().isEmpty()
                     ? "Updated task '" + task.getTitle() + "' (no field changes)"
-                    : "Updated task '" + task.getTitle() + "': " + String.join("; ", fieldChanges);
-            writeHistory(task, user, ChangeType.EDITED, truncate(summary));
+                    : "Updated task '" + task.getTitle() + "': " + String.join("; ", result.fieldChanges());
+            taskHistoryRecorder.record(task, result.actor(), ChangeType.EDITED, summary);
         }
         initializeProject(task);
         return task;
@@ -255,7 +148,7 @@ public class TaskServiceImpl implements TaskService {
         task.setUpdatedAt(Instant.now());
         task = this.taskRepository.save(task);
 
-        writeHistory(task, user, ChangeType.DELETED,
+        taskHistoryRecorder.record(task, user, ChangeType.DELETED,
                 "Deleted (cancelled) task '" + task.getTitle() + "'");
         initializeProject(task);
         return task;
@@ -276,9 +169,6 @@ public class TaskServiceImpl implements TaskService {
         if (task.getProject() != null) {
             Hibernate.initialize(task.getProject());
         }
-        if (task.getAssignee() != null) {
-            Hibernate.initialize(task.getAssignee());
-        }
     }
 
     private User requireUser(String userId) {
@@ -286,20 +176,4 @@ public class TaskServiceImpl implements TaskService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
     }
 
-    private void writeHistory(Task task, User actor, ChangeType type, String summary) {
-        TaskHistory history = new TaskHistory();
-        history.setTask(task);
-        history.setChangedBy(actor);
-        history.setChangeType(type);
-        history.setChangeSummary(truncate(summary));
-        history.setChangedAt(Instant.now());
-        taskHistoryRepository.save(history);
-    }
-
-    private static String truncate(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.length() <= 1000 ? value : value.substring(0, 997) + "...";
-    }
 }

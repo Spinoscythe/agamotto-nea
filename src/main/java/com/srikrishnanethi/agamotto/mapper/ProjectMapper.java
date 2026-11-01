@@ -15,7 +15,6 @@ public class ProjectMapper {
 				project.getDescription(),
 				project.getStartDate(),
 				project.getEndDate(),
-				project.getEstimatedEffortHours(),
 				project.getCreatedAt());
 	}
 }

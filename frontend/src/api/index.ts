@@ -1,17 +1,16 @@
 import { api } from './client'
 import type {
   AuthResponse,
+  CreateLeaveRequest,
   CreateProjectRequest,
   CreateTaskRequest,
   DashboardReportResponse,
   GenerateScheduleRequest,
+  LeaveResponse,
   LoginRequest,
   NotificationResponse,
   OverrideBlockRequest,
-  ProjectInviteResponse,
-  ProjectMemberResponse,
   ProjectResponse,
-  ProjectRole,
   RescheduleBlockRequest,
   RegisterRequest,
   ReportPeriod,
@@ -19,6 +18,7 @@ import type {
   ScheduleBlockResponse,
   SchedulePlanResponse,
   TaskResponse,
+  UpdateLeaveRequest,
   UpdateTaskRequest,
   UpdateUserRequest,
   UserResponse,
@@ -87,6 +87,19 @@ export const schedulesApi = {
     api.post<RescheduleResponse>(`/api/schedule-blocks/${blockId}/unattended`),
 }
 
+export const leavesApi = {
+  list: (params?: { start?: string; end?: string }) =>
+    api.get<LeaveResponse[]>('/api/leaves', params),
+  get: (id: string) =>
+    api.get<LeaveResponse>(`/api/leaves/${id}`),
+  create: (body: CreateLeaveRequest) =>
+    api.post<LeaveResponse>('/api/leaves', body),
+  update: (id: string, body: UpdateLeaveRequest) =>
+    api.patch<LeaveResponse>(`/api/leaves/${id}`, body),
+  remove: (id: string) =>
+    api.delete<void>(`/api/leaves/${id}`),
+}
+
 export const dashboardApi = {
   get: (userId: string, period: ReportPeriod) =>
     api.get<DashboardReportResponse>('/api/dashboard', { userId, period }),
@@ -97,25 +110,4 @@ export const notificationsApi = {
     api.get<NotificationResponse[]>('/api/notifications', { userId }),
   markRead: (notificationId: string) =>
     api.post<NotificationResponse>(`/api/notifications/${notificationId}/read`),
-}
-
-export const collaborationApi = {
-  listMembers: (projectId: string) =>
-    api.get<ProjectMemberResponse[]>(`/api/projects/${projectId}/members`),
-  listInvites: (projectId: string) =>
-    api.get<ProjectInviteResponse[]>(`/api/projects/${projectId}/invites`),
-  invite: (projectId: string, body: { email: string; role: ProjectRole }) =>
-    api.post<ProjectInviteResponse>(`/api/projects/${projectId}/invites`, body),
-  cancelInvite: (projectId: string, inviteId: string) =>
-    api.delete<void>(`/api/projects/${projectId}/invites/${inviteId}`),
-  updateRole: (projectId: string, userId: string, role: ProjectRole) =>
-    api.patch<ProjectMemberResponse>(`/api/projects/${projectId}/members/${userId}`, { role }),
-  removeMember: (projectId: string, userId: string) =>
-    api.delete<void>(`/api/projects/${projectId}/members/${userId}`),
-  leave: (projectId: string) =>
-    api.post<void>(`/api/projects/${projectId}/leave`),
-  acceptInvite: (inviteId: string) =>
-    api.post<ProjectInviteResponse>(`/api/invites/${inviteId}/accept`),
-  declineInvite: (inviteId: string) =>
-    api.post<ProjectInviteResponse>(`/api/invites/${inviteId}/decline`),
 }
